@@ -131,5 +131,6 @@ class PriceTrackerEngine:
 
         lines.append("=" * 90 + "\n")
         output = "\n".join(lines)
-        print(output)
-        return output
+        clean_output = output.encode("ascii", "ignore").decode("ascii")
+        print(clean_output)
+        return clean_output

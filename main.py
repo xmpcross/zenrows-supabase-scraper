@@ -17,7 +17,7 @@ logger = logging.getLogger("main")
 
 DEFAULT_MARKETPLACE_URLS = {
     "amazon": "https://www.amazon.com/gp/goldbox/?ie=UTF8&ref_=topnav_storetab_subnav_goldbox",
-    "ebay": "https://www.ebay.com/b/Consumer-Electronics/293/bn_1865552",
+    "ebay": "https://www.ebay.com/deals",
     "walmart": "https://www.walmart.com/browse/electronics/3944",
     "bestbuy": "https://www.bestbuy.com/site/electronics/top-deals/pcmcat1563299784494.c",
     "target": "https://www.target.com/c/electronics/-/N-5xtg6",
@@ -47,7 +47,11 @@ def scrape_marketplace_category(
     error_msg = None
 
     try:
-        html = fetcher.fetch_marketplace_html(url, marketplace)
+        custom_params = None
+        if "deal-of-the-day" in url.lower() or "deals" in url.lower() or "goldbox" in url.lower():
+            custom_params = {"js_render": "true", "antibot": "true", "premium_proxy": "true", "proxy_country": "us"}
+
+        html = fetcher.fetch_marketplace_html(url, marketplace, custom_params=custom_params)
         products = parse_marketplace_page(html, url, marketplace, category)
         logger.info(f"Successfully extracted {len(products)} products from {marketplace.upper()}.")
 
@@ -126,7 +130,30 @@ def main():
     target_marketplaces = ["amazon", "ebay", "walmart", "bestbuy", "target", "newegg", "aliexpress"] if args.marketplace == "all" else [args.marketplace]
 
     for mkp in target_marketplaces:
-        target_url = args.url if args.url else DEFAULT_MARKETPLACE_URLS.get(mkp)
+        target_url = args.url
+        if not target_url:
+            if args.category and args.category.lower() not in ["general", "deals", "today's deals", "top deals"]:
+                import urllib.parse
+                encoded_cat = urllib.parse.quote(args.category)
+                if mkp == "amazon":
+                    target_url = f"https://www.amazon.com/s?k={encoded_cat}"
+                elif mkp == "ebay":
+                    target_url = f"https://www.ebay.com/sch/i.html?_nkw={encoded_cat}"
+                elif mkp == "walmart":
+                    target_url = f"https://www.walmart.com/search?q={encoded_cat}"
+                elif mkp == "bestbuy":
+                    target_url = f"https://www.bestbuy.com/site/searchpage.jsp?st={encoded_cat}&intl=nosplash"
+                elif mkp == "target":
+                    target_url = f"https://www.target.com/s?searchTerm={encoded_cat}"
+                elif mkp == "newegg":
+                    target_url = f"https://www.newegg.com/p/pl?d={encoded_cat}"
+                elif mkp == "aliexpress":
+                    target_url = f"https://www.aliexpress.com/w/wholesale-{encoded_cat}.html"
+                else:
+                    target_url = DEFAULT_MARKETPLACE_URLS.get(mkp)
+            else:
+                target_url = DEFAULT_MARKETPLACE_URLS.get(mkp)
+
         print(f"\n--- SCRAPING {mkp.upper()} TOP PRODUCTS ---")
         print(f"Target URL : {target_url}")
         print(f"Category   : {args.category}")

@@ -15,10 +15,46 @@ def clean_price(price_str: Optional[str]) -> Optional[float]:
     except ValueError:
         return None
 
+KNOWN_BRANDS = [
+    "Apple", "Sony", "Samsung", "Asus", "Acer", "Lenovo", "Dell", "HP", "Bose",
+    "Logitech", "Microsoft", "Nintendo", "LG", "Nike", "Under Armour", "KitchenAid",
+    "Keurig", "Coleman", "Honeywell", "Milwaukee", "Seagate", "Western Digital", "Corsair",
+    "Anker", "JBL", "Garmin", "GoPro", "Sennheiser", "Dyson", "iRobot", "Breville",
+    "Ninja", "Instant Pot", "HexClad", "TruSkin", "Soundcore", "TP-Link", "Level8",
+    "T4Tream", "hOmeLabs", "Nuwave", "Citizen", "Grownsy", "Vivo", "Vongrasig",
+    "Kamrui", "Hiboy", "Typhur", "Hbada", "Alorair", "Big Horn", "Polk Audio",
+    "Auxito", "Eufy", "Drakes Pride", "Estee Lauder", "Forge Skin", "Zebco", "Pokemon"
+]
+
 def clean_text(text: Optional[str]) -> Optional[str]:
     if not text:
         return None
-    return " ".join(text.split())
+    ascii_clean = text.encode("ascii", "ignore").decode("ascii")
+    return " ".join(ascii_clean.split())
+
+def extract_brand(title: Optional[str], card: Optional[BeautifulSoup] = None) -> Optional[str]:
+    if not title:
+        return None
+    
+    # 1. Check DOM card for explicit brand element
+    if card:
+        brand_elem = card.select_one(".byline-info, [data-brand], a#bylineInfo, .brand-name, span.brand")
+        if brand_elem:
+            raw_b = brand_elem.get_text(strip=True).replace("Brand:", "").replace("by ", "").replace("Visit the ", "").replace(" Store", "")
+            if raw_b and len(raw_b) < 30:
+                return clean_text(raw_b)
+
+    # 2. Check title against known brands list
+    for b in KNOWN_BRANDS:
+        if re.search(r'\b' + re.escape(b) + r'\b', title, re.I):
+            return b
+
+    # 3. Fallback: First word of title if valid brand candidate
+    words = title.split()
+    if words and len(words[0]) >= 2 and words[0].isalpha() and words[0].lower() not in ["new", "sponsored", "sale", "the", "official", "pack"]:
+        return words[0].title()
+
+    return None
 
 # ==========================================
 # 1. AMAZON BEST SELLERS PARSER
@@ -101,7 +137,7 @@ def parse_amazon_bestsellers(html_content: str, category: str = "General") -> Li
                 "marketplace": "amazon",
                 "external_id": asin,
                 "title": clean_text(title),
-                "brand": None,
+                "brand": extract_brand(title, card),
                 "category": category,
                 "current_price": current_price,
                 "original_price": None,
@@ -133,61 +169,81 @@ def parse_ebay_trending(html_content: str, category: str = "General") -> List[Di
     soup = BeautifulSoup(html_content, "lxml")
     products = []
 
-    card_elements = soup.select(".srp-results .s-item, .b-list__items_nofooter .s-item, ul.b-list__items_nofooter > li")
+    card_elements = soup.select(".dne-itemcard, div.ebayui-dne-item-card, .srp-results .s-item, .b-list__items_nofooter .s-item, ul.b-list__items_nofooter > li")
+    if not card_elements:
+        item_links = soup.select("a[href*='/itm/'], a[href*='/p/']")
+        card_elements = []
+        for a in item_links:
+            parent = a.find_parent(class_=re.compile(r"(card|item|col|grid|wrapper)", re.I)) or a.parent
+            if parent and parent not in card_elements:
+                card_elements.append(parent)
+
     logger.info(f"eBay Parser: Found {len(card_elements)} product cards.")
 
     rank = 1
+    seen_urls = set()
+
     for card in card_elements:
-        title_elem = card.select_one(".s-item__title, .b-tile__title")
-        if not title_elem:
+        link_elem = card.select_one("a[href*='/itm/'], a[href*='/p/'], a.dne-itemcard-title, a.s-item__link, a.b-tile__link") or (card if card.name == "a" else None)
+        if not link_elem:
             continue
-        title = title_elem.get_text(strip=True)
-        if "Shop on eBay" in title or ("New Listing" in title and len(title) < 15):
+        product_url = link_elem.get("href", "").split("?")[0]
+        if not product_url or product_url in seen_urls:
             continue
 
-        link_elem = card.select_one("a.s-item__link, a.b-tile__link")
-        product_url = link_elem.get("href", "").split("?")[0] if link_elem else ""
+        title_elem = card.select_one("span[title], h3, h2, span.title, .dne-itemcard-title, .s-item__title, img[alt]") or a
+        title = title_elem.get("alt") if title_elem and title_elem.name == "img" else title_elem.get_text(strip=True)
+
+        if not title or len(title) < 5 or "Shop on eBay" in title:
+            continue
+
+        seen_urls.add(product_url)
 
         item_id = None
         id_match = re.search(r"/itm/(\d+)", product_url)
         if id_match:
             item_id = id_match.group(1)
 
-        price_elem = card.select_one(".s-item__price, .b-tile__price")
+        price_elem = card.select_one("span[class*='price' i], div[class*='price' i], span.first-price, .dne-itemcard-price, .s-item__price")
         current_price = clean_price(price_elem.get_text()) if price_elem else None
 
-        img_elem = card.select_one(".s-item__image-img img, img.s-item__image-img, img")
+        orig_price_elem = card.select_one(".dne-itemcard-original-price, .item-tile__price-original, span[class*='original' i]")
+        orig_price = clean_price(orig_price_elem.get_text()) if orig_price_elem else None
+
+        badge_elem = card.select_one(".dne-itemcard-hotness, .dne-itemcard-discount, .s-item__discount, span[class*='discount' i]")
+        coupon_text = clean_text(badge_elem.get_text()) if badge_elem else None
+
+        img_elem = card.select_one("img[src*='ebayimg'], img[data-src], img")
         image_url = img_elem.get("src") or img_elem.get("data-src") if img_elem else None
 
         seller_elem = card.select_one(".s-item__seller-info")
         seller_name = seller_elem.get_text(strip=True) if seller_elem else "eBay Seller"
 
-        if title and product_url:
-            products.append({
-                "marketplace": "ebay",
-                "external_id": item_id,
-                "title": clean_text(title),
-                "brand": None,
-                "category": category,
-                "current_price": current_price,
-                "original_price": None,
-                "discount_percent": None,
-                "currency": "USD",
-                "rank_position": rank,
-                "rating": None,
-                "review_count": 0,
-                "seller_name": seller_name,
-                "coupon_text": None,
-                "coupon_code": None,
-                "short_description": None,
-                "description": None,
-                "is_available": True,
-                "product_url": product_url,
-                "image_url": image_url,
-                "images": [image_url] if image_url else [],
-                "metadata": {"ebay_item_id": item_id}
-            })
-            rank += 1
+        products.append({
+            "marketplace": "ebay",
+            "external_id": item_id,
+            "title": clean_text(title),
+            "brand": None,
+            "category": category,
+            "current_price": current_price,
+            "original_price": orig_price,
+            "discount_percent": None,
+            "currency": "USD",
+            "rank_position": rank,
+            "rating": None,
+            "review_count": 0,
+            "seller_name": seller_name,
+            "coupon_text": coupon_text,
+            "coupon_code": None,
+            "short_description": None,
+            "description": None,
+            "is_available": True,
+            "product_url": product_url,
+            "image_url": image_url,
+            "images": [image_url] if image_url else [],
+            "metadata": {"ebay_item_id": item_id}
+        })
+        rank += 1
 
     return products
 
@@ -270,7 +326,7 @@ def parse_walmart_bestsellers(html_content: str, category: str = "General") -> L
                 "marketplace": "walmart",
                 "external_id": item_id,
                 "title": clean_text(title),
-                "brand": None,
+                "brand": extract_brand(title, card),
                 "category": category,
                 "current_price": price,
                 "original_price": None,
@@ -298,69 +354,77 @@ def parse_bestbuy_bestsellers(html_content: str, category: str = "General") -> L
     soup = BeautifulSoup(html_content, "lxml")
     products = []
 
-    card_elements = soup.select("li.sku-item, div.sku-item, div[data-sku-id], div.shop-sku-list-item")
-    logger.info(f"BestBuy Parser: Found {len(card_elements)} sku cards.")
+    card_elements = soup.select("div.dotd-product-offer, div.offer-position-1, div[class*='offer' i], div[class*='dotd' i], li.sku-item, div.sku-item, div[data-sku-id]")
+    if not card_elements:
+        card_elements = [a.find_parent("div") for a in soup.select("a[href*='/site/'], a[href*='/product/'], a[href*='/combo/']") if a.find_parent("div")]
+
+    logger.info(f"BestBuy Parser: Found {len(card_elements)} candidate product cards.")
 
     rank = 1
+    seen_urls = set()
+
     for card in card_elements:
-        sku_id = card.get("data-sku-id")
-        title_elem = card.select_one("h4.sku-title a, div.sku-title a, .sku-header a")
-        title = title_elem.get_text(strip=True) if title_elem else None
+        title_elem = card.select_one("h1 a, h2 a, h3 a, h4 a, .heading-5 a, .heading-4 a, a[href*='/site/'], a[href*='/product/']")
+        if not title_elem:
+            title_elem = card.select_one("h1, h2, h3, h4, .heading-5, .heading-4")
+        if not title_elem:
+            continue
+        
+        title = title_elem.get_text(strip=True)
+        if not title or len(title) < 5 or "See Deal of the Day" in title or "Best Buy" in title:
+            continue
 
-        link_elem = title_elem if title_elem else card.select_one("a[href*='/site/']")
-        product_url = ""
-        if link_elem:
-            href = link_elem.get("href", "")
-            if href.startswith("/"):
-                product_url = f"https://www.bestbuy.com{href.split('?')[0]}"
-            else:
-                product_url = href.split("?")[0]
-            if not sku_id:
-                sku_match = re.search(r"/(\d{7})\.p", product_url)
-                if sku_match:
-                    sku_id = sku_match.group(1)
+        link_elem = title_elem if title_elem.name == "a" else card.select_one("a[href*='/site/'], a[href*='/product/'], a[href*='/combo/']")
+        if not link_elem:
+            continue
 
-        price_elem = card.select_one("div.priceView-customer-price span, div.customer-price, span.aria-hidden")
+        href = link_elem.get("href", "")
+        if not href or href in seen_urls:
+            continue
+
+        product_url = f"https://www.bestbuy.com{href.split('?')[0]}" if href.startswith("/") else href.split("?")[0]
+        seen_urls.add(href)
+        seen_urls.add(product_url)
+
+        sku_id = None
+        sku_match = re.search(r"/(?:product|site|combo)/.*?/([A-Z0-9]{6,12}|\d{7})", product_url)
+        if sku_match:
+            sku_id = sku_match.group(1)
+
+        price_elem = card.select_one("span.customer-price, div.priceView-customer-price span, [class*='price' i]")
         price = clean_price(price_elem.get_text()) if price_elem else None
 
-        orig_price_elem = card.select_one("div.pricing-price__regular-price, span.pricing-price__regular-price-value")
+        orig_price_elem = card.select_one("div.pricing-price__regular-price, span.pricing-price__regular-price-value, [class*='regular' i]")
         orig_price = clean_price(orig_price_elem.get_text()) if orig_price_elem else None
-
-        rating_elem = card.select_one("p.c-review-average, span.c-review-average")
-        rating = clean_price(rating_elem.get_text()) if rating_elem else None
-
-        review_elem = card.select_one("span.c-total-reviews, div.c-total-reviews")
-        review_count = 0
-        if review_elem:
-            rev_match = re.search(r"[\d,]+", review_elem.get_text())
-            if rev_match:
-                review_count = int(rev_match.group(0).replace(",", ""))
 
         img_elem = card.select_one("img.product-image, img.sku-image, img")
         image_url = img_elem.get("src") if img_elem else None
 
-        if title and (product_url or sku_id):
-            products.append({
-                "marketplace": "bestbuy",
-                "external_id": sku_id,
-                "title": clean_text(title),
-                "brand": None,
-                "category": category,
-                "current_price": price,
-                "original_price": orig_price,
-                "discount_percent": None,
-                "currency": "USD",
-                "rank_position": rank,
-                "rating": rating,
-                "review_count": review_count,
-                "seller_name": "Best Buy",
-                "is_available": True,
-                "product_url": product_url or f"https://www.bestbuy.com/site/{sku_id}.p",
-                "image_url": image_url,
-                "images": [image_url] if image_url else [],
-                "metadata": {"sku_id": sku_id}
-            })
-            rank += 1
+        products.append({
+            "marketplace": "bestbuy",
+            "external_id": sku_id,
+            "title": clean_text(title),
+            "brand": extract_brand(title, card),
+            "category": category,
+            "current_price": price,
+            "original_price": orig_price,
+            "discount_percent": None,
+            "currency": "USD",
+            "rank_position": rank,
+            "rating": None,
+            "review_count": 0,
+            "seller_name": "Best Buy",
+            "coupon_text": None,
+            "coupon_code": None,
+            "short_description": None,
+            "description": None,
+            "is_available": True,
+            "product_url": product_url,
+            "image_url": image_url,
+            "images": [image_url] if image_url else [],
+            "metadata": {"sku_id": sku_id}
+        })
+        rank += 1
 
     return products
 
@@ -448,7 +512,7 @@ def parse_target_bestsellers(html_content: str, category: str = "General") -> Li
                 "marketplace": "target",
                 "external_id": tcin,
                 "title": clean_text(title),
-                "brand": None,
+                "brand": extract_brand(title, card),
                 "category": category,
                 "current_price": price,
                 "original_price": None,
@@ -521,7 +585,7 @@ def parse_newegg_bestsellers(html_content: str, category: str = "General") -> Li
                 "marketplace": "newegg",
                 "external_id": item_id,
                 "title": clean_text(title),
-                "brand": None,
+                "brand": extract_brand(title, card),
                 "category": category,
                 "current_price": price,
                 "original_price": orig_price,

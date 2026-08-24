@@ -3,6 +3,8 @@ from typing import Dict, Any, List, Optional
 from supabase import create_client, Client
 from config import Config
 
+from services.category_classifier import classify_product_category
+
 logger = logging.getLogger(__name__)
 
 class SupabaseManager:
@@ -33,10 +35,15 @@ class SupabaseManager:
             return {"status": "skipped", "reason": "No Supabase client connected"}
 
         try:
+            # Auto-classify product category if missing or generic
+            title = product_data.get("title", "")
+            raw_cat = product_data.get("category", "")
+            product_data["category"] = classify_product_category(title, raw_cat)
+
             response = self.client.table("marketplace_products").upsert(
                 product_data, on_conflict="product_url"
             ).execute()
-            logger.info(f"Upserted {product_data.get('marketplace', '').upper()} product: '{product_data.get('title')}'")
+            logger.info(f"Upserted {product_data.get('marketplace', '').upper()} product: '{product_data.get('title')}' -> [{product_data['category']}]")
             return {"status": "success", "data": response.data}
         except Exception as e:
             logger.error(f"Error upserting product to Supabase: {e}")

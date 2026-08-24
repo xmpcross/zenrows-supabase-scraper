@@ -23,7 +23,8 @@ MARKETPLACE_PRESETS = {
         "js_render": "true",
         "antibot": "true",
         "premium_proxy": "true",
-        "proxy_country": "us"
+        "proxy_country": "us",
+        "wait": "5000"
     },
     "target": {
         "js_render": "true",
@@ -43,9 +44,33 @@ MARKETPLACE_PRESETS = {
         "premium_proxy": "true"
     },
     "ebay": {
-        "js_render": "false",
+        "js_render": "true",
         "antibot": "true",
-        "premium_proxy": "false"
+        "premium_proxy": "true"
+    },
+    "amazon_au": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "ebay_au": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "jbhifi": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "harveynorman": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
     }
 }
 
@@ -107,17 +132,23 @@ class ZenRowsFetcher:
     ) -> str:
         """
         Fetches HTML configured with optimal ZenRows presets for specific marketplaces.
+        Only passes active 'true' parameters to ZenRows API.
         """
         marketplace_key = marketplace.lower()
-        preset = MARKETPLACE_PRESETS.get(marketplace_key, {
+        raw_preset = MARKETPLACE_PRESETS.get(marketplace_key, {
             "js_render": "true" if Config.DEFAULT_JS_RENDER else "false",
             "antibot": "true" if Config.DEFAULT_ANTIBOT else "false",
             "premium_proxy": "true" if Config.DEFAULT_PREMIUM_PROXY else "false"
         })
 
-        merged_params = dict(preset)
+        # Clean params so we don't send 'false' strings to ZenRows API
+        active_params = {}
+        for k, v in raw_preset.items():
+            if v == "true" or (isinstance(v, str) and v != "false"):
+                active_params[k] = v
+
         if custom_params:
-            merged_params.update(custom_params)
+            active_params.update(custom_params)
 
         if not self.client:
             logger.info(f"ZenRows API key not set. Direct fallback request to {marketplace} URL: {url}")
@@ -129,10 +160,10 @@ class ZenRowsFetcher:
             resp.raise_for_status()
             return resp.text
 
-        logger.info(f"Fetching {marketplace.upper()} page via ZenRows. Params: {merged_params}")
-        response = self.client.get(url, params=merged_params)
+        logger.info(f"Fetching {marketplace.upper()} page via ZenRows. Params: {active_params}")
+        response = self.client.get(url, params=active_params)
         if response.status_code != 200:
-            logger.error(f"ZenRows API error for {marketplace}: status {response.status_code}")
+            logger.error(f"ZenRows API error for {marketplace}: status {response.status_code} - {response.text}")
             response.raise_for_status()
 
         return response.text
