@@ -142,17 +142,19 @@ python main.py --marketplace walmart --category Electronics
 
 ### Scrape All 7 Marketplaces at Once
 ```bash
-python main.py --marketplace all --category Electronics
+# Scrape all 7 marketplaces at once (Amazon, eBay, Walmart, Best Buy, Target, Newegg, AliExpress)
+python main.py --marketplace all
 ```
 
 ### Run Automated Price History Refresh (Price Check)
-Re-scrapes tracked product URLs and logs price drops into `price_history`:
 ```bash
+# Re-check prices for existing tracked products and log price drops to price_history
 python main.py --price-check
 ```
 
 ### Display Cross-Marketplace Price Comparison Matrix
 ```bash
+# Print cross-marketplace price comparison table
 python main.py --compare
 ```
 
