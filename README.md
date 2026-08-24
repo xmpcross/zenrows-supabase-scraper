@@ -160,6 +160,45 @@ python main.py --compare
 
 ---
 
+## 🗂️ Querying Categories in Supabase (SQL & REST API)
+
+### 1. In Supabase SQL Editor
+
+#### Find total products & average price grouped by category:
+```sql
+SELECT 
+    category, 
+    COUNT(*) AS product_count, 
+    ROUND(AVG(current_price), 2) AS avg_price 
+FROM public.marketplace_products 
+GROUP BY category 
+ORDER BY product_count DESC;
+```
+
+#### Filter products within a specific category:
+```sql
+SELECT title, current_price, marketplace, product_url 
+FROM public.marketplace_products 
+WHERE category ILIKE '%Headphones%'
+ORDER BY current_price ASC;
+```
+
+### 2. Hierarchical Category Table (`categories`)
+Your database schema includes a dedicated `categories` table linked via foreign key (`category_id`):
+
+```sql
+-- Query nested parent-child categories
+SELECT 
+    parent.name AS main_category, 
+    child.name AS sub_category
+FROM public.categories child
+LEFT JOIN public.categories parent ON child.parent_id = parent.id;
+```
+
+This allows you to build multi-level category navigation (e.g., *Electronics -> Audio -> Headphones*) as your database grows to tens of thousands of listings!
+
+---
+
 ## 🛡️ Marketplace Scraping Strategies in ZenRows
 
 | Marketplace | `antibot` | `js_render` | `premium_proxy` | Description / Strategy |
