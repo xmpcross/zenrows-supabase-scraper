@@ -1,0 +1,16 @@
+# Environment Variables (Contains sensitive API keys)
+.env
+
+# Python virtual environment
+.venv/
+env/
+venv/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+
+# Logs and temporary dumps
+*.log
+amazon_dump.html
+debug_*.py
