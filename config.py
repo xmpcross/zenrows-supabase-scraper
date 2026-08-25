@@ -8,6 +8,7 @@ class Config:
     ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY", "")
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
     DEFAULT_JS_RENDER = os.getenv("DEFAULT_JS_RENDER", "false").lower() == "true"
     DEFAULT_PREMIUM_PROXY = os.getenv("DEFAULT_PREMIUM_PROXY", "false").lower() == "true"

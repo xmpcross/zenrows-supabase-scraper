@@ -24,10 +24,13 @@ SMART_HOME_CATEGORIES = {
     "audio": ["speaker", "soundbar", "sonos", "audio", "subwoofer", "bose"]
 }
 
+from services.ai_content_rewriter import AIContentRewriter
+
 class SmartHomeMatcherEngine:
     def __init__(self, supabase: Optional[SupabaseManager] = None, fetcher: Optional[ZenRowsFetcher] = None):
         self.supabase = supabase or SupabaseManager()
         self.fetcher = fetcher or ZenRowsFetcher()
+        self.rewriter = AIContentRewriter()
 
     def classify_smart_home_category(self, title: str) -> str:
         """Classifies product title into smart home subcategories."""
@@ -83,9 +86,9 @@ class SmartHomeMatcherEngine:
         union = norm1.union(norm2)
         return len(intersection) / len(union)
 
-    def find_or_create_canonical_product(self, raw_product: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
+    def find_or_create_canonical_product(self, raw_product: Dict[str, Any], niche: str = "smart_home") -> Tuple[Dict[str, Any], bool]:
         """
-        Finds existing canonical smart home product in Supabase or creates a new master entry.
+        Finds existing canonical product in Supabase or creates a new AI-enriched master entry.
         """
         title = raw_product.get("title", "")
         gtin = raw_product.get("metadata", {}).get("gtin") or raw_product.get("metadata", {}).get("upc")
@@ -107,21 +110,30 @@ class SmartHomeMatcherEngine:
                     if sim >= 0.55:
                         return existing, False
 
-        # Create new canonical record
+        # Run AI Content Rewriter for unique SEO title & descriptions
+        ai_enriched = self.rewriter.rewrite_product_content(
+            title=title,
+            brand=brand,
+            category=category,
+            raw_description=raw_product.get("short_description") or raw_product.get("description"),
+            niche=niche
+        )
+
         canonical_data = {
-            "title": clean_text(title),
+            "niche": niche,
+            "title": ai_enriched.get("seo_title", title),
             "brand": brand or "Generic",
             "model": model,
             "gtin_upc_ean": gtin,
             "category": category,
             "image_url": raw_product.get("image_url"),
-            "description": raw_product.get("short_description") or raw_product.get("description")
+            "description": ai_enriched.get("description")
         }
 
         if self.supabase.is_connected():
             res = self.supabase.client.table("canonical_products").insert(canonical_data).execute()
             if res.data:
-                logger.info(f"Created NEW Canonical Smart Home Product: '{title}' [{category}]")
+                logger.info(f"Created NEW Canonical Product (AI Enriched): '{canonical_data['title']}' [{category}]")
                 return res.data[0], True
 
         return {**canonical_data, "id": "mock-canonical-id"}, True
