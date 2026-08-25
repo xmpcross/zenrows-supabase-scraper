@@ -8,6 +8,17 @@ cd "$SCRIPT_DIR"
 # Create logs directory if missing
 mkdir -p "$SCRIPT_DIR/logs"
 
+# Resolve Python Executable
+if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
+    PYTHON_EXEC="$SCRIPT_DIR/.venv/bin/python"
+elif [ -f "$SCRIPT_DIR/.venv/bin/python3" ]; then
+    PYTHON_EXEC="$SCRIPT_DIR/.venv/bin/python3"
+elif command -v python3 &>/dev/null; then
+    PYTHON_EXEC="python3"
+else
+    PYTHON_EXEC="python"
+fi
+
 # Activate Virtual Environment if present
 if [ -f "$SCRIPT_DIR/.venv/bin/activate" ]; then
     source "$SCRIPT_DIR/.venv/bin/activate"
@@ -19,7 +30,7 @@ echo "[$TIMESTAMP] Starting Remote Server Daily Deals Ingestion" >> "$SCRIPT_DIR
 echo "==================================================" >> "$SCRIPT_DIR/logs/cron.log"
 
 # Run Production Pipeline
-python run_nxt_bargains_pipeline.py >> "$SCRIPT_DIR/logs/cron.log" 2>&1
+"$PYTHON_EXEC" run_nxt_bargains_pipeline.py >> "$SCRIPT_DIR/logs/cron.log" 2>&1
 
 EXIT_CODE=$?
 TIMESTAMP_END=$(date "+%Y-%m-%d %H:%M:%S")
