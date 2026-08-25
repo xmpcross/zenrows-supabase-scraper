@@ -14,6 +14,12 @@ class Config:
     STRAPI_URL = os.getenv("STRAPI_URL", "https://cms.fxnstudio.com")
     STRAPI_API_TOKEN = os.getenv("STRAPI_API_TOKEN", "")
 
+    # Affiliate Monetization Tags
+    AMAZON_AFFILIATE_TAG = os.getenv("AMAZON_AFFILIATE_TAG", "nxtbargains-20")
+    EBAY_AFFILIATE_CAMPAIGN_ID = os.getenv("EBAY_AFFILIATE_CAMPAIGN_ID", "5338000000")
+    WALMART_AFFILIATE_ID = os.getenv("WALMART_AFFILIATE_ID", "")
+    BESTBUY_AFFILIATE_ID = os.getenv("BESTBUY_AFFILIATE_ID", "")
+
     DEFAULT_JS_RENDER = os.getenv("DEFAULT_JS_RENDER", "false").lower() == "true"
     DEFAULT_PREMIUM_PROXY = os.getenv("DEFAULT_PREMIUM_PROXY", "false").lower() == "true"
     DEFAULT_ANTIBOT = os.getenv("DEFAULT_ANTIBOT", "true").lower() == "true"

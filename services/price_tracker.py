@@ -6,6 +6,8 @@ from scrapers.zenrows_client import ZenRowsFetcher
 from scrapers.marketplace_scrapers import parse_marketplace_page
 from services.waterfall_matcher import WaterfallMatcher, calculate_trigram_similarity
 
+from services.affiliate_linker import AffiliateLinker
+
 logger = logging.getLogger(__name__)
 
 class PriceTrackerEngine:
@@ -13,11 +15,13 @@ class PriceTrackerEngine:
         self,
         supabase: Optional[SupabaseManager] = None,
         fetcher: Optional[ZenRowsFetcher] = None,
-        matcher: Optional[WaterfallMatcher] = None
+        matcher: Optional[WaterfallMatcher] = None,
+        affiliate_linker: Optional[AffiliateLinker] = None
     ):
         self.supabase = supabase or SupabaseManager()
         self.fetcher = fetcher or ZenRowsFetcher()
         self.matcher = matcher or WaterfallMatcher(supabase=self.supabase)
+        self.affiliate_linker = affiliate_linker or AffiliateLinker()
 
     def refresh_product_price(self, product: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -91,6 +95,13 @@ class PriceTrackerEngine:
         Runs incoming scraped offer through WaterfallMatcher (GTIN -> ASIN -> Brand+MPN -> Trigram),
         links canonical_product_id, and upserts into marketplace_products table.
         """
+        # Monetize URL with Affiliate Tracking Tags
+        orig_url = raw_offer.get("product_url", "")
+        raw_offer["product_url"] = self.affiliate_linker.monetize_url(
+            url=orig_url, 
+            marketplace=raw_offer.get("marketplace", "")
+        )
+
         match_result = self.matcher.match_offer(raw_offer, local_catalog=local_catalog)
         canonical_id = match_result.get("canonical_product_id")
 
