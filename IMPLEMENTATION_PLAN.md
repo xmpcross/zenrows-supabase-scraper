@@ -1,23 +1,31 @@
-# 🏡 Smart Home Price Comparison Implementation Plan
+# 🛍️ Multi-Niche Price Comparison Platform Implementation Plan
 
-Architecture, database design, ZenRows scraping pipeline, product matching engine, and 3-offer validation strategy for **`nxtsmarthome.com.au`** (Australia) and **`nxtsmart.homes`** (International).
+Comprehensive architecture, database design, ZenRows scraping pipeline, product matching engine, and 3-offer validation strategy powering 3 specialized niche comparison platforms:
+
+1. 🇦🇺 **`nxtsmarthome.com.au`**: Australian Smart Home Electronics *(Amazon AU, JB Hi-Fi, Harvey Norman, The Good Guys, eBay AU, Bunnings)*
+2. 🌐 **`nxtsmart.homes`**: International Smart Home Electronics *(US, UK, CA, EU: Amazon, Best Buy, Walmart, Target, Currys, MediaMarkt)*
+3. ✨ **`www.bestlooking.skin`**: International Beauty & Skincare *(US, UK, CA, EU, AU, NZ: Sephora, Ulta, Boots, Mecca, Adore Beauty, Lookfantastic, Chemist Warehouse)*
 
 ---
 
 ## 🎯 Executive Summary & Objectives
 
-The goal of this system is to power two distinct, high-converting smart home price comparison platforms sharing a unified backend architecture:
+The system architecture supports multi-tenant niche platforms sharing a unified backend infrastructure:
 
-1. **`nxtsmarthome.com.au` (Australia Platform)**:
-   - Targets Australian consumers with localized currency (`AUD`).
-   - Fetches products exclusively from major Australian retailers: **Amazon AU**, **JB Hi-Fi**, **Harvey Norman**, **The Good Guys**, **eBay AU**, and **Bunnings**.
+- **Site 1: `nxtsmarthome.com.au` (AU Smart Home)**
+  - Scope: `niche = 'smart_home'`, `region = 'AU'`, currency `AUD`.
+  - Target Retailers: Amazon AU, JB Hi-Fi, Harvey Norman, The Good Guys, eBay AU, Bunnings.
 
-2. **`nxtsmart.homes` (International Platform)**:
-   - Targets North American and European consumers (`USD`, `GBP`, `CAD`, `EUR`).
-   - Fetches products from international electronics giants: **Amazon (US, UK, CA, DE)**, **Best Buy (US, CA)**, **Walmart**, **Target**, **Currys UK**, and **MediaMarkt DE**.
+- **Site 2: `nxtsmart.homes` (International Smart Home)**
+  - Scope: `niche = 'smart_home'`, `region IN ('US', 'UK', 'CA', 'EU')`, currencies `USD`, `GBP`, `CAD`, `EUR`.
+  - Target Retailers: Amazon US/UK/CA/DE, Best Buy US/CA, Walmart, Target, Currys UK, MediaMarkt DE.
 
-3. **Core Business Rule: Minimum 3 Offers Requirement**:
-   - To deliver genuine price comparison value and maximize trust, **no product will be displayed on either site unless it has at least 3 active retailer offers** in its respective target region.
+- **Site 3: `www.bestlooking.skin` (International Beauty & Skincare)**
+  - Scope: `niche = 'beauty_skincare'`, `region IN ('US', 'UK', 'CA', 'EU', 'AU', 'NZ')`, currencies `USD`, `GBP`, `CAD`, `EUR`, `AUD`, `NZD`.
+  - Target Retailers: Sephora (US/CA/UK/EU/AU), Ulta Beauty (US), Boots (UK), Mecca (AU/NZ), Adore Beauty (AU), Chemist Warehouse (AU/NZ), Dermstore, Lookfantastic, Cult Beauty, Amazon.
+
+- **Core Rule - Minimum 3 Offers**:
+  No canonical product will be displayed on any of the 3 sites unless it has **at least 3 active retailer offers** within that site's target region and niche.
 
 ---
 
@@ -29,99 +37,79 @@ The goal of this system is to power two distinct, high-converting smart home pri
                                     | (Anti-Bot, JS, Proxy) |
                                     +-----------+-----------+
                                                 |
-                 +------------------------------+------------------------------+
-                 |                                                             |
-                 v                                                             v
-+---------------------------------+                           +----------------------------------+
-|      AU Scraping Pipeline       |                           |      International Pipeline      |
-|  Retailers:                     |                           |  Regions: US, UK, CA, EU         |
-|  - Amazon AU (amazon.com.au)    |                           |  Retailers:                      |
-|  - JB Hi-Fi (jbhifi.com.au)     |                           |  - Amazon (US, UK, CA, DE)       |
-|  - Harvey Norman                |                           |  - Best Buy (US, CA)             |
-|  - The Good Guys                |                           |  - Walmart & Target (US)         |
-|  - eBay AU & Bunnings           |                           |  - Currys (UK) & MediaMarkt (DE) |
-+----------------+----------------+                           +----------------+-----------------+
-                 |                                                             |
-                 +------------------------------+------------------------------+
-                                                |
-                                                v
-+------------------------------------------------------------------------------------------------+
-|                             Smart Home Matcher & Offer Engine                                  |
-|  - Categorizes into Smart Home Taxonomy (Security, Lighting, Hubs, Climate, Vacuums, etc.)    |
-|  - Normalizes Brand, Model, GTIN/UPC/EAN                                                       |
-|  - Enforces Rule: Active Offers Count >= 3 per Region                                           |
-+-----------------------------------------------+------------------------------------------------+
-                                                |
-                                                v
-+------------------------------------------------------------------------------------------------+
-|                                    Supabase DB                                                 |
-|  - canonical_products (Master Smart Home Catalog)                                              |
-|  - marketplace_products (Retailer listings with region tags)                                   |
-|  - price_history (Automated price change snapshots via PostgreSQL trigger)                     |
-|  - v_au_smart_home_comparisons (View for nxtsmarthome.com.au: AU region & >= 3 offers)         |
-|  - v_intl_smart_home_comparisons (View for nxtsmart.homes: US/UK/CA/EU & >= 3 offers)          |
-+------------------------------------------------------------------------------------------------+
+        +---------------------------------------+---------------------------------------+
+        |                                       |                                       |
+        v                                       v                                       v
++-----------------------+               +-----------------------+               +-----------------------+
+|  AU Smart Home Pipeline|               | Intl Smart Home Pipeline|               |  Beauty & Skincare Pipeline|
+|  Retailers:           |               |  Regions: US, UK, CA, EU|               |  Regions: US/UK/CA/EU/AU/NZ|
+|  - Amazon AU          |               |  Retailers:           |               |  Retailers:           |
+|  - JB Hi-Fi           |               |  - Amazon (US/UK/CA/DE|               |  - Sephora, Ulta      |
+|  - Harvey Norman      |               |  - Best Buy, Walmart  |               |  - Boots UK, Mecca AU |
+|  - The Good Guys      |               |  - Target, Currys     |               |  - Adore Beauty       |
++-----------+-----------+               +-----------+-----------+               +-----------+-----------+
+            |                                       |                                       |
+            +---------------------------------------+---------------------------------------+
+                                                    |
+                                                    v
++---------------------------------------------------------------------------------------------------+
+|                              Smart Matcher & Multi-Offer Engine                                   |
+|  - Classifies into Smart Home Taxonomy or Beauty & Skincare Taxonomy                              |
+|  - Normalizes Brand, Volume/Size, Shade, GTIN/UPC/EAN                                             |
+|  - Enforces Rule: Active Retailer Offers Count >= 3 per Region & Niche                            |
++---------------------------------------------------+-----------------------------------------------+
+                                                    |
+                                                    v
++---------------------------------------------------------------------------------------------------+
+|                                       Supabase DB                                                 |
+|  - canonical_products (Master Smart Home & Beauty Catalog with niche tags)                        |
+|  - marketplace_products (Scraped retailer listings with region & currency tags)                   |
+|  - price_history (Automated price change snapshots via PostgreSQL trigger)                        |
+|  - v_au_smart_home_comparisons (View for nxtsmarthome.com.au: AU Smart Home & >= 3 offers)         |
+|  - v_intl_smart_home_comparisons (View for nxtsmart.homes: Intl Smart Home & >= 3 offers)         |
+|  - v_beauty_skincare_comparisons (View for www.bestlooking.skin: Beauty & >= 3 offers)             |
++---------------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 🗄️ Database Schema & 3-Offer Validation Views
+## 💄 Beauty & Skincare Category Taxonomy & Brands
+
+### 1. Categories
+- 🧴 **Cleansers & Toners**: Gel Cleansers, Cleansing Oils, Micellar Waters, Exfoliating Toners, Essences.
+- 💧 **Serums & Treatments**: Vitamin C, Retinol / Bakuchiol, Hyaluronic Acid, Niacinamide, AHA/BHA Acids, Eye Serums.
+- 🧴 **Moisturizers & Creams**: Night Creams, Gel Moisturizers, Barrier Repair Creams, Face Oils.
+- ☀️ **Sunscreen & Sun Care**: Mineral Sunscreens, Chemical Sunscreens, Tinted SPFs.
+- 🎭 **Face Masks & Peels**: Clay Masks, Sheet Masks, Overnight Masks, Chemical Peels.
+- 👁️ **Eye & Lip Care**: Eye Creams, Dark Circle Treatments, Lip Sleeping Masks, Lip Balms.
+- 💆 **Hair & Body Care**: Scalp Treatments, Hair Oils, Body Scrubs, Body Lotions.
+
+### 2. Top Brands
+The Ordinary, CeraVe, La Roche-Posay, Paula's Choice, Glow Recipe, SkinCeuticals, Drunk Elephant, Estée Lauder, Clinique, Laneige, COSRX, Supergoop!, Sunday Riley, Kiehl's, Tatcha, Youth to the People, Sol de Janeiro, Fenty Skin, Dyson Beauty, NARS, Charlotte Tilbury, Urban Decay, MAC, Olaplex, Dermalogica, Biossance, Murad.
+
+---
+
+## 🗄️ Database Schema & SQL Views
 
 ### 1. Canonical Products Table (`canonical_products`)
-Stores master record for each unique smart home product model (*Ring Video Doorbell 4, Philips Hue Bridge v2, Google Nest Hub 2nd Gen, Roborock S8 Pro Ultra*):
 - `id` (UUID Primary Key)
-- `title` (Master title)
-- `brand` (e.g. *Ring, Nest, Philips Hue, Eufy, Arlo, Ecobee, Roborock*)
-- `model` (e.g. *Gen 4, v2, Pro, Ultra, 4K*)
-- `gtin_upc_ean` (Universal Product Code index)
-- `category` (Smart Home taxonomy)
+- `niche` (`'smart_home'`, `'beauty_skincare'`)
+- `title` (Master product name)
+- `brand` (e.g. *The Ordinary, CeraVe, La Roche-Posay, SkinCeuticals, Ring, Nest*)
+- `variant` (e.g. *30ml, 50ml, 100ml, Shade / Option*)
+- `gtin_upc_ean` (Universal product identifier)
+- `category` (Niche taxonomy)
 
-### 2. Retailer Offers Table (`marketplace_products`)
-Stores individual scraped retailer listings:
-- `region` (`'AU'`, `'US'`, `'UK'`, `'CA'`, `'EU'`)
-- `marketplace` (`'amazon_au'`, `'jbhifi'`, `'harveynorman'`, `'thegoodguys'`, `'amazon_us'`, `'bestbuy'`, etc.)
-- `canonical_product_id` (Foreign key to `canonical_products.id`)
-- `current_price`, `currency`, `product_url`, `is_available`, `image_url`
-
-### 3. Automated 3-Offer SQL Views
-
-#### View for Australia (`v_au_smart_home_comparisons`)
+### 2. SQL View for `www.bestlooking.skin` (`v_beauty_skincare_comparisons`)
 ```sql
-CREATE OR REPLACE VIEW public.v_au_smart_home_comparisons AS
+CREATE OR REPLACE VIEW public.v_beauty_skincare_comparisons AS
 SELECT 
     cp.id AS canonical_product_id,
     cp.title AS canonical_title,
     cp.brand,
+    cp.variant,
     cp.category,
-    COUNT(mp.id) AS active_offers_count,
-    MIN(mp.current_price) AS lowest_price_aud,
-    MAX(mp.current_price) AS highest_price_aud,
-    json_agg(
-        json_build_object(
-            'offer_id', mp.id,
-            'marketplace', mp.marketplace,
-            'retailer_name', UPPER(mp.marketplace),
-            'price', mp.current_price,
-            'currency', mp.currency,
-            'product_url', mp.product_url,
-            'is_available', mp.is_available
-        ) ORDER BY mp.current_price ASC
-    ) AS offers
-FROM public.canonical_products cp
-JOIN public.marketplace_products mp ON cp.id = mp.canonical_product_id
-WHERE mp.region = 'AU' AND mp.is_available = true AND mp.current_price IS NOT NULL
-GROUP BY cp.id, cp.title, cp.brand, cp.category
-HAVING COUNT(mp.id) >= 3;
-```
-
-#### View for International (`v_intl_smart_home_comparisons`)
-```sql
-CREATE OR REPLACE VIEW public.v_intl_smart_home_comparisons AS
-SELECT 
-    cp.id AS canonical_product_id,
-    cp.title AS canonical_title,
-    cp.brand,
-    cp.category,
+    cp.image_url AS canonical_image,
     COUNT(mp.id) AS active_offers_count,
     MIN(mp.current_price) AS lowest_price,
     MAX(mp.current_price) AS highest_price,
@@ -134,54 +122,59 @@ SELECT
             'price', mp.current_price,
             'currency', mp.currency,
             'product_url', mp.product_url,
+            'image_url', mp.image_url,
+            'rating', mp.rating,
             'is_available', mp.is_available
         ) ORDER BY mp.current_price ASC
     ) AS offers
 FROM public.canonical_products cp
 JOIN public.marketplace_products mp ON cp.id = mp.canonical_product_id
-WHERE mp.region IN ('US', 'UK', 'CA', 'EU') AND mp.is_available = true AND mp.current_price IS NOT NULL
-GROUP BY cp.id, cp.title, cp.brand, cp.category
+WHERE cp.niche = 'beauty_skincare' 
+  AND mp.region IN ('US', 'UK', 'CA', 'EU', 'AU', 'NZ') 
+  AND mp.is_available = true 
+  AND mp.current_price IS NOT NULL
+GROUP BY cp.id, cp.title, cp.brand, cp.variant, cp.category, cp.image_url
 HAVING COUNT(mp.id) >= 3;
 ```
 
 ---
 
-## 🛡️ ZenRows Proxy & Scraping Configurations
+## 🛡️ ZenRows Regional Presets for Beauty & Skincare Stores
 
-| Store / Retailer | Region | `proxy_country` | `js_render` | `antibot` | Target Website |
+| Retailer / Store | Region | `proxy_country` | `js_render` | `antibot` | Target Site |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Amazon AU** | AU | `au` | `true` | `true` | `nxtsmarthome.com.au` |
-| **JB Hi-Fi** | AU | `au` | `true` | `true` | `nxtsmarthome.com.au` |
-| **Harvey Norman** | AU | `au` | `true` | `true` | `nxtsmarthome.com.au` |
-| **The Good Guys** | AU | `au` | `true` | `true` | `nxtsmarthome.com.au` |
-| **eBay AU** | AU | `au` | `true` | `true` | `nxtsmarthome.com.au` |
-| **Amazon US** | US | `us` | `true` | `true` | `nxtsmart.homes` |
-| **Best Buy US** | US | `us` | `true` | `true` | `nxtsmart.homes` |
-| **Walmart** | US | `us` | `true` | `true` | `nxtsmart.homes` |
-| **Target** | US | `us` | `true` | `true` | `nxtsmart.homes` |
-| **Currys UK** | UK | `gb` | `true` | `true` | `nxtsmart.homes` |
-| **Amazon UK** | UK | `gb` | `true` | `true` | `nxtsmart.homes` |
-| **MediaMarkt DE** | DE | `de` | `true` | `true` | `nxtsmart.homes` |
+| **Sephora US** | US | `us` | `true` | `true` | `www.bestlooking.skin` |
+| **Ulta Beauty** | US | `us` | `true` | `true` | `www.bestlooking.skin` |
+| **Dermstore** | US | `us` | `true` | `true` | `www.bestlooking.skin` |
+| **Boots UK** | UK | `gb` | `true` | `true` | `www.bestlooking.skin` |
+| **Lookfantastic UK** | UK | `gb` | `true` | `true` | `www.bestlooking.skin` |
+| **Cult Beauty UK** | UK | `gb` | `true` | `true` | `www.bestlooking.skin` |
+| **Sephora CA** | CA | `ca` | `true` | `true` | `www.bestlooking.skin` |
+| **Shoppers Drug Mart** | CA | `ca` | `true` | `true` | `www.bestlooking.skin` |
+| **Mecca AU** | AU | `au` | `true` | `true` | `www.bestlooking.skin` |
+| **Adore Beauty AU** | AU | `au` | `true` | `true` | `www.bestlooking.skin` |
+| **Chemist Warehouse** | AU/NZ | `au` | `true` | `true` | `www.bestlooking.skin` |
+| **Sephora EU** | FR/DE | `fr` | `true` | `true` | `www.bestlooking.skin` |
 
 ---
 
 ## 🚀 Execution CLI Commands
 
-### 1. Scrape & Match Smart Home Products for Australia
+### 1. View Comparisons for `www.bestlooking.skin` (Min 3 Offers)
 ```bash
-python main.py --site au --smarthome
+python main.py --site beauty --compare
 ```
 
-### 2. Scrape & Match Smart Home Products for International
+### 2. Discover & Index Skincare Products
 ```bash
-python main.py --site intl --smarthome
+python main.py --site beauty --skincare
 ```
 
-### 3. Display Valid 3+ Offer Comparisons
+### 3. Smart Home Platforms
 ```bash
-# Query Australian comparisons (nxtsmarthome.com.au)
+# Australian Smart Home site (nxtsmarthome.com.au)
 python main.py --site au --compare
 
-# Query International comparisons (nxtsmart.homes)
+# International Smart Home site (nxtsmart.homes)
 python main.py --site intl --compare
 ```

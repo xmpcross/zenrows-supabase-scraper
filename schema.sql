@@ -1,9 +1,10 @@
 -- ===================================================
 -- ZenRows + Supabase Multi-Marketplace Scraper Schema
--- Smart Home Price Comparison System
+-- Multi-Niche Price Comparison System
 -- Supports:
--- 1. nxtsmarthome.com.au (AU Region, AU Retailers)
--- 2. nxtsmart.homes (International: US, UK, CA, EU)
+-- 1. nxtsmarthome.com.au (AU Smart Home)
+-- 2. nxtsmart.homes (International Smart Home)
+-- 3. www.bestlooking.skin (International Beauty & Skincare)
 -- ===================================================
 
 -- Enable UUID extension
@@ -14,28 +15,39 @@ CREATE TABLE IF NOT EXISTS public.categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
+    niche TEXT NOT NULL DEFAULT 'smart_home',
     parent_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed Default Smart Home Categories
-INSERT INTO public.categories (name, slug) VALUES
-('Smart Security & Access', 'smart-security'),
-('Smart Lighting & Ambiance', 'smart-lighting'),
-('Smart Climate & Energy', 'smart-climate'),
-('Smart Hubs & Controllers', 'smart-hubs'),
-('Robot Vacuums & Appliances', 'robot-vacuums'),
-('Smart Audio & Entertainment', 'smart-audio')
+-- Seed Smart Home Categories
+INSERT INTO public.categories (name, slug, niche) VALUES
+('Smart Security & Access', 'smart-security', 'smart_home'),
+('Smart Lighting & Ambiance', 'smart-lighting', 'smart_home'),
+('Smart Climate & Energy', 'smart-climate', 'smart_home'),
+('Smart Hubs & Controllers', 'smart-hubs', 'smart_home'),
+('Robot Vacuums & Appliances', 'robot-vacuums', 'smart_home'),
+('Smart Audio & Entertainment', 'smart-audio', 'smart_home'),
+-- Seed Beauty & Skincare Categories
+('Cleansers & Toners', 'cleansers-toners', 'beauty_skincare'),
+('Serums & Treatments', 'serums-treatments', 'beauty_skincare'),
+('Moisturizers & Creams', 'moisturizers-creams', 'beauty_skincare'),
+('Sunscreen & Sun Care', 'sunscreen-suncare', 'beauty_skincare'),
+('Face Masks & Peels', 'facemasks-peels', 'beauty_skincare'),
+('Eye & Lip Care', 'eye-lip-care', 'beauty_skincare'),
+('Hair & Body Care', 'hair-body-care', 'beauty_skincare')
 ON CONFLICT (slug) DO NOTHING;
 
--- 2. Canonical Smart Home Products (Master Product Records)
+-- 2. Canonical Products Table (Master Product Catalog across Niches)
 CREATE TABLE IF NOT EXISTS public.canonical_products (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    niche VARCHAR(50) NOT NULL DEFAULT 'smart_home', -- 'smart_home', 'beauty_skincare'
     title TEXT NOT NULL,
     brand TEXT,
     model TEXT,
+    variant TEXT,                                      -- e.g. "50ml", "Shade 02", "Pack of 2"
     gtin_upc_ean TEXT UNIQUE,
-    category TEXT NOT NULL DEFAULT 'Smart Home',
+    category TEXT NOT NULL DEFAULT 'General',
     image_url TEXT,
     description TEXT,
     specifications JSONB DEFAULT '{}'::jsonb,
@@ -44,6 +56,7 @@ CREATE TABLE IF NOT EXISTS public.canonical_products (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_canonical_niche ON public.canonical_products(niche);
 CREATE INDEX IF NOT EXISTS idx_canonical_brand ON public.canonical_products(brand);
 CREATE INDEX IF NOT EXISTS idx_canonical_category ON public.canonical_products(category);
 
@@ -51,16 +64,16 @@ CREATE INDEX IF NOT EXISTS idx_canonical_category ON public.canonical_products(c
 CREATE TABLE IF NOT EXISTS public.marketplace_products (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     canonical_product_id UUID REFERENCES public.canonical_products(id) ON DELETE SET NULL,
-    region VARCHAR(10) NOT NULL DEFAULT 'AU', -- 'AU', 'US', 'UK', 'CA', 'EU'
-    marketplace VARCHAR(50) NOT NULL,        -- 'amazon_au', 'jbhifi', 'harveynorman', 'amazon_us', 'bestbuy', 'walmart', 'currys', etc.
-    external_id TEXT,                        -- ASIN, SKU, Item ID
+    region VARCHAR(10) NOT NULL DEFAULT 'AU', -- 'AU', 'US', 'UK', 'CA', 'EU', 'NZ'
+    marketplace VARCHAR(50) NOT NULL,        -- 'sephora', 'ulta', 'boots', 'mecca', 'adorebeauty', 'amazon', 'jbhifi', etc.
+    external_id TEXT,
     title TEXT NOT NULL,
     brand TEXT,
     category TEXT,
     current_price NUMERIC(12, 2),
     original_price NUMERIC(12, 2),
     discount_percent NUMERIC(5, 2),
-    currency VARCHAR(10) DEFAULT 'AUD',      -- 'AUD', 'USD', 'GBP', 'CAD', 'EUR'
+    currency VARCHAR(10) DEFAULT 'USD',
     rank_position INTEGER,
     rating NUMERIC(3, 2),
     review_count INTEGER DEFAULT 0,
@@ -91,32 +104,14 @@ CREATE TABLE IF NOT EXISTS public.price_history (
     listing_id UUID NOT NULL REFERENCES public.marketplace_products(id) ON DELETE CASCADE,
     price NUMERIC(12, 2) NOT NULL,
     original_price NUMERIC(12, 2),
-    currency VARCHAR(10) DEFAULT 'AUD',
+    currency VARCHAR(10) DEFAULT 'USD',
     recorded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_history_listing ON public.price_history(listing_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_recorded_at ON public.price_history(recorded_at DESC);
 
--- 5. Product Comparison Groups (Legacy Compatibility)
-CREATE TABLE IF NOT EXISTS public.product_comparison_groups (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT NOT NULL,
-    normalized_title TEXT,
-    gtin_upc_ean TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.comparison_group_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    group_id UUID NOT NULL REFERENCES public.product_comparison_groups(id) ON DELETE CASCADE,
-    listing_id UUID NOT NULL REFERENCES public.marketplace_products(id) ON DELETE CASCADE,
-    matched_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(group_id, listing_id)
-);
-
--- 6. Scrape Run Logs Table
+-- 5. Scrape Run Logs Table
 CREATE TABLE IF NOT EXISTS public.scrape_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     target_url TEXT NOT NULL,
@@ -132,7 +127,7 @@ CREATE TABLE IF NOT EXISTS public.scrape_logs (
 CREATE INDEX IF NOT EXISTS idx_scrape_logs_status ON public.scrape_logs(status);
 CREATE INDEX IF NOT EXISTS idx_scrape_logs_created_at ON public.scrape_logs(created_at DESC);
 
--- 7. Trigger Function: Log Price Changes to price_history
+-- 6. Trigger Function: Log Price Changes to price_history
 CREATE OR REPLACE FUNCTION public.fn_log_price_history()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -153,10 +148,9 @@ AFTER INSERT OR UPDATE ON public.marketplace_products
 FOR EACH ROW
 EXECUTE FUNCTION public.fn_log_price_history();
 
--- 8. Views for 3+ Offers Rule Enforcement
+-- 7. Views for 3+ Offers Rule Enforcement Across Sites
 
--- View for nxtsmarthome.com.au (Australian Site)
--- Returns canonical products that have AT LEAST 3 active Australian retailer offers
+-- View for nxtsmarthome.com.au (AU Smart Home Site)
 CREATE OR REPLACE VIEW public.v_au_smart_home_comparisons AS
 SELECT 
     cp.id AS canonical_product_id,
@@ -185,12 +179,11 @@ SELECT
     ) AS offers
 FROM public.canonical_products cp
 JOIN public.marketplace_products mp ON cp.id = mp.canonical_product_id
-WHERE mp.region = 'AU' AND mp.is_available = true AND mp.current_price IS NOT NULL
+WHERE cp.niche = 'smart_home' AND mp.region = 'AU' AND mp.is_available = true AND mp.current_price IS NOT NULL
 GROUP BY cp.id, cp.title, cp.brand, cp.model, cp.category, cp.image_url
 HAVING COUNT(mp.id) >= 3;
 
--- View for nxtsmart.homes (International Site)
--- Returns canonical products that have AT LEAST 3 active International retailer offers
+-- View for nxtsmart.homes (International Smart Home Site)
 CREATE OR REPLACE VIEW public.v_intl_smart_home_comparisons AS
 SELECT 
     cp.id AS canonical_product_id,
@@ -220,8 +213,45 @@ SELECT
     ) AS offers
 FROM public.canonical_products cp
 JOIN public.marketplace_products mp ON cp.id = mp.canonical_product_id
-WHERE mp.region IN ('US', 'UK', 'CA', 'EU') AND mp.is_available = true AND mp.current_price IS NOT NULL
+WHERE cp.niche = 'smart_home' AND mp.region IN ('US', 'UK', 'CA', 'EU') AND mp.is_available = true AND mp.current_price IS NOT NULL
 GROUP BY cp.id, cp.title, cp.brand, cp.model, cp.category, cp.image_url
+HAVING COUNT(mp.id) >= 3;
+
+-- View for www.bestlooking.skin (International Beauty & Skincare Site)
+CREATE OR REPLACE VIEW public.v_beauty_skincare_comparisons AS
+SELECT 
+    cp.id AS canonical_product_id,
+    cp.title AS canonical_title,
+    cp.brand,
+    cp.variant,
+    cp.category,
+    cp.image_url AS canonical_image,
+    COUNT(mp.id) AS active_offers_count,
+    MIN(mp.current_price) AS lowest_price,
+    MAX(mp.current_price) AS highest_price,
+    json_agg(
+        json_build_object(
+            'offer_id', mp.id,
+            'region', mp.region,
+            'marketplace', mp.marketplace,
+            'retailer_name', UPPER(mp.marketplace),
+            'price', mp.current_price,
+            'original_price', mp.original_price,
+            'currency', mp.currency,
+            'coupon_text', mp.coupon_text,
+            'product_url', mp.product_url,
+            'image_url', mp.image_url,
+            'rating', mp.rating,
+            'is_available', mp.is_available
+        ) ORDER BY mp.current_price ASC
+    ) AS offers
+FROM public.canonical_products cp
+JOIN public.marketplace_products mp ON cp.id = mp.canonical_product_id
+WHERE cp.niche = 'beauty_skincare' 
+  AND mp.region IN ('US', 'UK', 'CA', 'EU', 'AU', 'NZ') 
+  AND mp.is_available = true 
+  AND mp.current_price IS NOT NULL
+GROUP BY cp.id, cp.title, cp.brand, cp.variant, cp.category, cp.image_url
 HAVING COUNT(mp.id) >= 3;
 
 -- Row Level Security (RLS) policies
@@ -229,8 +259,6 @@ ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.canonical_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketplace_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.price_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.product_comparison_groups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.comparison_group_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scrape_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access
@@ -238,15 +266,12 @@ CREATE POLICY "Allow public read categories" ON public.categories FOR SELECT USI
 CREATE POLICY "Allow public read canonical_products" ON public.canonical_products FOR SELECT USING (true);
 CREATE POLICY "Allow public read marketplace_products" ON public.marketplace_products FOR SELECT USING (true);
 CREATE POLICY "Allow public read price_history" ON public.price_history FOR SELECT USING (true);
-CREATE POLICY "Allow public read comparison_groups" ON public.product_comparison_groups FOR SELECT USING (true);
-CREATE POLICY "Allow public read comparison_items" ON public.comparison_group_items FOR SELECT USING (true);
 
 -- Allow full write access for scraper service
 CREATE POLICY "Allow write categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow write canonical_products" ON public.canonical_products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow write marketplace_products" ON public.marketplace_products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow write price_history" ON public.price_history FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow write comparison_groups" ON public.product_comparison_groups FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow write comparison_items" ON public.comparison_group_items FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow write scrape_logs" ON public.scrape_logs FOR ALL USING (true) WITH CHECK (true);
+
 

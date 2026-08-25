@@ -163,13 +163,34 @@ class SupabaseManager:
             logger.error(f"Error upserting canonical product: {e}")
             return {"status": "error", "error": str(e)}
 
-    def get_valid_smart_home_comparisons(self, site: str = "au", limit: int = 50) -> List[Dict[str, Any]]:
+    def get_valid_comparisons(self, site: str = "au", limit: int = 50) -> List[Dict[str, Any]]:
         """
-        Queries database views for nxtsmarthome.com.au ('au') or nxtsmart.homes ('intl')
-        to return ONLY smart home products that have AT LEAST 3 active retailer offers.
+        Queries database views for:
+        - 'au': nxtsmarthome.com.au (v_au_smart_home_comparisons)
+        - 'intl': nxtsmart.homes (v_intl_smart_home_comparisons)
+        - 'beauty': www.bestlooking.skin (v_beauty_skincare_comparisons)
+        Returns ONLY products that have AT LEAST 3 active retailer offers.
         """
         if not self.client:
             logger.info(f"[Mock DB] Returning sample 3-offer comparison set for site: {site}")
+            if site.lower() == "beauty":
+                return [
+                    {
+                        "canonical_product_id": "mock-ordinary-niacinamide",
+                        "canonical_title": "The Ordinary Niacinamide 10% + Zinc 1%",
+                        "brand": "The Ordinary",
+                        "category": "Serums & Treatments",
+                        "active_offers_count": 3,
+                        "lowest_price": 6.00,
+                        "currency": "USD",
+                        "offers": [
+                            {"marketplace": "sephora", "price": 6.00, "retailer_name": "Sephora"},
+                            {"marketplace": "ulta", "price": 6.00, "retailer_name": "Ulta Beauty"},
+                            {"marketplace": "boots", "price": 6.50, "retailer_name": "Boots UK"}
+                        ]
+                    }
+                ]
+
             return [
                 {
                     "canonical_product_id": "mock-ring-doorbell-id",
@@ -187,7 +208,14 @@ class SupabaseManager:
                 }
             ]
 
-        view_name = "v_au_smart_home_comparisons" if site.lower() == "au" else "v_intl_smart_home_comparisons"
+        s_lower = site.lower()
+        if s_lower in ["beauty", "skincare", "bestlooking"]:
+            view_name = "v_beauty_skincare_comparisons"
+        elif s_lower == "au":
+            view_name = "v_au_smart_home_comparisons"
+        else:
+            view_name = "v_intl_smart_home_comparisons"
+
         try:
             res = self.client.table(view_name).select("*").limit(limit).execute()
             return res.data or []

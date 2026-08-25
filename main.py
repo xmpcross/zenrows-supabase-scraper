@@ -77,12 +77,13 @@ def scrape_marketplace_category(
     return products
 
 def main():
-    parser = argparse.ArgumentParser(description="ZenRows + Supabase Smart Home Price Comparison CLI")
-    parser.add_argument("--site", choices=["au", "intl"], default="au", help="Target website: 'au' (nxtsmarthome.com.au) or 'intl' (nxtsmart.homes)")
+    parser = argparse.ArgumentParser(description="ZenRows + Supabase Multi-Niche Price Comparison CLI")
+    parser.add_argument("--site", choices=["au", "intl", "beauty"], default="au", help="Target site: 'au' (nxtsmarthome.com.au), 'intl' (nxtsmart.homes), or 'beauty' (www.bestlooking.skin)")
     parser.add_argument("--marketplace", type=str, default="auto", help="Target marketplace or 'auto' for site default")
     parser.add_argument("--url", type=str, help="Target Web Page URL to scrape")
-    parser.add_argument("--category", type=str, default="Smart Home", help="Category label for products")
+    parser.add_argument("--category", type=str, default="General", help="Category label for products")
     parser.add_argument("--smarthome", action="store_true", help="Run smart home discovery and multi-offer matcher")
+    parser.add_argument("--skincare", action="store_true", help="Run beauty & skincare discovery and multi-offer matcher")
     parser.add_argument("--min-offers", type=int, default=3, help="Minimum offers required per product (default 3)")
     parser.add_argument("--price-check", action="store_true", help="Run automated price check on tracked products")
     parser.add_argument("--compare", action="store_true", help="Display 3+ offer comparison matrix for target site")
@@ -100,20 +101,23 @@ def main():
     tracker = PriceTrackerEngine(supabase=supabase, fetcher=fetcher)
     matcher = SmartHomeMatcherEngine(supabase=supabase, fetcher=fetcher)
 
+    site_name = "nxtsmarthome.com.au" if args.site == "au" else ("www.bestlooking.skin" if args.site == "beauty" else "nxtsmart.homes")
+    region_label = "AU (Australia)" if args.site == "au" else ("Global (US, UK, CA, EU, AU, NZ)" if args.site == "beauty" else "International (US, UK, CA, EU)")
+
     print("\n" + "="*80)
-    print(f" [SMART HOME PRICE COMPARISON ENGINE] SITE: {'nxtsmarthome.com.au' if args.site == 'au' else 'nxtsmart.homes'}")
-    print(f" Region: {'AU (Australia)' if args.site == 'au' else 'International (US, UK, CA, EU)'} | Min Offers Rule: {args.min_offers}+")
+    print(f" [PRICE COMPARISON ENGINE] TARGET SITE: {site_name}")
+    print(f" Region Scope: {region_label} | Min Offers Rule: {args.min_offers}+")
     print("="*80 + "\n")
 
     # 1. Compare View Mode (Querying 3+ offer views)
     if args.compare:
-        print(f"=== FETCHING VALID COMPARISONS (MIN {args.min_offers} OFFERS) FOR: {args.site.upper()} ===")
-        comparisons = supabase.get_valid_smart_home_comparisons(site=args.site, limit=50)
+        print(f"=== FETCHING VALID COMPARISONS (MIN {args.min_offers} OFFERS) FOR: {site_name} ===")
+        comparisons = supabase.get_valid_comparisons(site=args.site, limit=50)
         print(f"Found {len(comparisons)} canonical products with >= {args.min_offers} active offers:\n")
         
         for c in comparisons:
-            print(f"-> [{c.get('category', 'Smart Home')}] {c.get('canonical_title')} ({c.get('brand')})")
-            print(f"   Offers Count: {c.get('active_offers_count')} | Price Range: ${c.get('lowest_price_aud', c.get('lowest_price'))} - ${c.get('highest_price_aud', c.get('highest_price'))} {c.get('currency', 'AUD')}")
+            print(f"-> [{c.get('category', 'General')}] {c.get('canonical_title')} ({c.get('brand')})")
+            print(f"   Offers Count: {c.get('active_offers_count')} | Price Range: ${c.get('lowest_price_aud', c.get('lowest_price'))} - ${c.get('highest_price_aud', c.get('highest_price'))} {c.get('currency', 'USD')}")
             for offer in c.get('offers', []):
                 print(f"   - {offer.get('retailer_name')}: ${offer.get('price')} ({offer.get('product_url')})")
             print("-" * 75)
