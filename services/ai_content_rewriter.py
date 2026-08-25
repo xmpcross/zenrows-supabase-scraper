@@ -56,7 +56,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
 }}"""
 
                 response = self.client.models.generate_content(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.5-flash",
                     contents=prompt
                 )
                 
@@ -65,9 +65,15 @@ Respond ONLY with a valid JSON object matching this exact schema:
                 if json_match:
                     res_json = json.loads(json_match.group(0))
                     logger.info(f"AI Rewriter Success for product: '{res_json.get('seo_title')}'")
+                    short_desc_raw = res_json.get("short_description", title)
+                    if isinstance(short_desc_raw, list):
+                        short_desc = "\n".join(f"- {item}" for item in short_desc_raw)
+                    else:
+                        short_desc = str(short_desc_raw)
+
                     return {
                         "seo_title": res_json.get("seo_title", title),
-                        "short_description": res_json.get("short_description", title),
+                        "short_description": short_desc,
                         "description": res_json.get("summary_description", title),
                         "is_ai_generated": True
                     }
