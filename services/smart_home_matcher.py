@@ -138,53 +138,83 @@ class SmartHomeMatcherEngine:
 
         return {**canonical_data, "id": "mock-canonical-id"}, True
 
-    def fetch_offers_for_canonical_product(self, canonical_product: Dict[str, Any], region: str = "AU") -> List[Dict[str, Any]]:
+from scrapers.dataforseo_client import DataForSEOFetcher
+
+class SmartHomeMatcherEngine:
+    def __init__(
+        self,
+        supabase: Optional[SupabaseManager] = None,
+        fetcher: Optional[ZenRowsFetcher] = None,
+        dataforseo_fetcher: Optional[DataForSEOFetcher] = None
+    ):
+        self.supabase = supabase or SupabaseManager()
+        self.fetcher = fetcher or ZenRowsFetcher()
+        self.dataforseo = dataforseo_fetcher or DataForSEOFetcher()
+        self.rewriter = AIContentRewriter()
+
+    def fetch_offers_for_canonical_product(
+        self,
+        canonical_product: Dict[str, Any],
+        region: str = "AU",
+        provider: str = "auto"
+    ) -> List[Dict[str, Any]]:
         """
-        Searches target regional stores via ZenRows to find competing offers
+        Searches target regional stores via DataForSEO or ZenRows to find competing offers
         and ensure canonical product has AT LEAST 3 offers.
         """
         product_id = canonical_product.get("id")
         title = canonical_product.get("title")
         brand = canonical_product.get("brand", "")
 
-        logger.info(f"Searching competing offers for '{title}' in Region '{region}'...")
+        logger.info(f"Searching competing offers for '{title}' in Region '{region}' (Provider: {provider})...")
 
         search_query = f"{brand} {title}" if brand and brand not in title else title
         search_query_clean = "+".join(self.normalize_title(search_query).split()[:4])
 
         collected_offers = []
 
-        if region == "AU":
-            # Australian target retailers
-            sources = [
-                ("amazon_au", f"https://www.amazon.com.au/s?k={search_query_clean}"),
-                ("jbhifi", f"https://www.jbhifi.com.au/search?query={search_query_clean}"),
-                ("harveynorman", f"https://www.harveynorman.com.au/catalogsearch/result/?q={search_query_clean}"),
-                ("thegoodguys", f"https://www.thegoodguys.com.au/search?q={search_query_clean}")
-            ]
-        else:
-            # International target retailers (US/UK/CA/EU)
-            sources = [
-                ("amazon_us", f"https://www.amazon.com/s?k={search_query_clean}"),
-                ("bestbuy", f"https://www.bestbuy.com/site/searchpage.jsp?st={search_query_clean}"),
-                ("walmart", f"https://www.walmart.com/search?q={search_query_clean}"),
-                ("target", f"https://www.target.com/s?searchTerm={search_query_clean}")
-            ]
+        # Use DataForSEO as primary when configured or requested
+        if provider in ["dataforseo", "auto"] and self.dataforseo.is_configured:
+            collected_offers = self.dataforseo.search_google_shopping_offers(
+                keyword=search_query,
+                region=region,
+                category=canonical_product.get("category", "General")
+            )
 
-        for mkp, search_url in sources:
-            try:
-                html = self.fetcher.fetch_marketplace_html(search_url, mkp)
-                parsed = parse_marketplace_page(html, search_url, mkp, category=canonical_product.get("category", "Smart Home"))
-                for item in parsed[:2]:  # Take top relevant match from each retailer
-                    sim = self.calculate_similarity(title, item.get("title", ""))
-                    if sim >= 0.45:
-                        item["canonical_product_id"] = product_id
-                        item["region"] = region
-                        collected_offers.append(item)
-                        if self.supabase.is_connected():
-                            self.supabase.upsert_marketplace_product(item)
-            except Exception as e:
-                logger.warning(f"Search fetch failed for {mkp} ({search_url}): {e}")
+        # Fallback to ZenRows direct web scraper if DataForSEO produced < 3 offers
+        if len(collected_offers) < 3 or provider == "zenrows":
+            if region == "AU":
+                sources = [
+                    ("amazon_au", f"https://www.amazon.com.au/s?k={search_query_clean}"),
+                    ("jbhifi", f"https://www.jbhifi.com.au/search?query={search_query_clean}"),
+                    ("harveynorman", f"https://www.harveynorman.com.au/catalogsearch/result/?q={search_query_clean}"),
+                    ("thegoodguys", f"https://www.thegoodguys.com.au/search?q={search_query_clean}")
+                ]
+            else:
+                sources = [
+                    ("amazon_us", f"https://www.amazon.com/s?k={search_query_clean}"),
+                    ("bestbuy", f"https://www.bestbuy.com/site/searchpage.jsp?st={search_query_clean}"),
+                    ("walmart", f"https://www.walmart.com/search?q={search_query_clean}"),
+                    ("target", f"https://www.target.com/s?searchTerm={search_query_clean}")
+                ]
+
+            for mkp, search_url in sources:
+                try:
+                    html = self.fetcher.fetch_marketplace_html(search_url, mkp)
+                    parsed = parse_marketplace_page(html, search_url, mkp, category=canonical_product.get("category", "Smart Home"))
+                    for item in parsed[:2]:
+                        sim = self.calculate_similarity(title, item.get("title", ""))
+                        if sim >= 0.40:
+                            collected_offers.append(item)
+                except Exception as e:
+                    logger.warning(f"Error fetching ZenRows offers from {mkp}: {e}")
+
+        # Attach canonical_product_id and save to Supabase
+        for offer in collected_offers:
+            offer["canonical_product_id"] = product_id
+
+        if self.supabase.is_connected() and collected_offers:
+            self.supabase.upsert_marketplace_products_batch(collected_offers)
 
         logger.info(f"Collected {len(collected_offers)} offers for canonical product '{title}'.")
         return collected_offers

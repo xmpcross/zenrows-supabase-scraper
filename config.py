@@ -9,6 +9,8 @@ class Config:
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    DATAFORSEO_LOGIN = os.getenv("DATAFORSEO_LOGIN", "")
+    DATAFORSEO_PASSWORD = os.getenv("DATAFORSEO_PASSWORD", "")
 
     DEFAULT_JS_RENDER = os.getenv("DEFAULT_JS_RENDER", "false").lower() == "true"
     DEFAULT_PREMIUM_PROXY = os.getenv("DEFAULT_PREMIUM_PROXY", "false").lower() == "true"

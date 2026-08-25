@@ -5,6 +5,7 @@ import logging
 from config import Config
 from db.supabase_client import SupabaseManager
 from scrapers.zenrows_client import ZenRowsFetcher
+from scrapers.dataforseo_client import DataForSEOFetcher
 from scrapers.marketplace_scrapers import parse_marketplace_page
 from services.price_tracker import PriceTrackerEngine
 from services.smart_home_matcher import SmartHomeMatcherEngine
@@ -79,6 +80,7 @@ def scrape_marketplace_category(
 def main():
     parser = argparse.ArgumentParser(description="ZenRows + Supabase Multi-Niche Price Comparison CLI")
     parser.add_argument("--site", choices=["au", "intl", "beauty"], default="au", help="Target site: 'au' (nxtsmarthome.com.au), 'intl' (nxtsmart.homes), or 'beauty' (www.bestlooking.skin)")
+    parser.add_argument("--provider", choices=["auto", "dataforseo", "zenrows"], default="auto", help="Ingestion provider: 'dataforseo' (Google Shopping API), 'zenrows' (Direct Web Scraper), or 'auto'")
     parser.add_argument("--marketplace", type=str, default="auto", help="Target marketplace or 'auto' for site default")
     parser.add_argument("--url", type=str, help="Target Web Page URL to scrape")
     parser.add_argument("--category", type=str, default="General", help="Category label for products")
