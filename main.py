@@ -7,6 +7,7 @@ from db.supabase_client import SupabaseManager
 from scrapers.zenrows_client import ZenRowsFetcher
 from scrapers.marketplace_scrapers import parse_marketplace_page
 from services.price_tracker import PriceTrackerEngine
+from services.smart_home_matcher import SmartHomeMatcherEngine
 
 # Configure logging
 logging.basicConfig(
@@ -16,19 +17,21 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 DEFAULT_MARKETPLACE_URLS = {
-    "amazon": "https://www.amazon.com/gp/goldbox/?ie=UTF8&ref_=topnav_storetab_subnav_goldbox",
-    "ebay": "https://www.ebay.com/deals",
-    "walmart": "https://www.walmart.com/browse/electronics/3944",
-    "bestbuy": "https://www.bestbuy.com/site/electronics/top-deals/pcmcat1563299784494.c",
-    "target": "https://www.target.com/c/electronics/-/N-5xtg6",
-    "newegg": "https://www.newegg.com/todays-deals",
-    "aliexpress": "https://www.aliexpress.com/superdeals.html"
+    "amazon_au": "https://www.amazon.com.au/gp/bestsellers/electronics/",
+    "jbhifi": "https://www.jbhifi.com.au/collections/home-appliances/smart-home-security",
+    "harveynorman": "https://www.harveynorman.com.au/connected-home-smart-home.html",
+    "thegoodguys": "https://www.thegoodguys.com.au/smart-home",
+    "ebay_au": "https://www.ebay.com.au/b/Smart-Home-Electronics/184470/bn_7116521743",
+    "amazon": "https://www.amazon.com/gp/bestsellers/electronics/",
+    "bestbuy": "https://www.bestbuy.com/site/electronics/smart-home/pcmcat311200050005.c",
+    "walmart": "https://www.walmart.com/browse/smart-home/3944_1229875",
+    "target": "https://www.target.com/c/smart-home-electronics/-/N-55k0x"
 }
 
 def scrape_marketplace_category(
     marketplace: str,
     url: str,
-    category: str = "General",
+    category: str = "Smart Home",
     fetcher: ZenRowsFetcher = None,
     supabase: SupabaseManager = None
 ):
@@ -47,11 +50,7 @@ def scrape_marketplace_category(
     error_msg = None
 
     try:
-        custom_params = None
-        if "deal-of-the-day" in url.lower() or "deals" in url.lower() or "goldbox" in url.lower():
-            custom_params = {"js_render": "true", "antibot": "true", "premium_proxy": "true", "proxy_country": "us"}
-
-        html = fetcher.fetch_marketplace_html(url, marketplace, custom_params=custom_params)
+        html = fetcher.fetch_marketplace_html(url, marketplace)
         products = parse_marketplace_page(html, url, marketplace, category)
         logger.info(f"Successfully extracted {len(products)} products from {marketplace.upper()}.")
 
@@ -78,12 +77,15 @@ def scrape_marketplace_category(
     return products
 
 def main():
-    parser = argparse.ArgumentParser(description="ZenRows Multi-Marketplace Product Scraper & Supabase Price Tracker CLI")
-    parser.add_argument("--marketplace", choices=["amazon", "ebay", "walmart", "bestbuy", "target", "newegg", "aliexpress", "all"], default="amazon", help="Target marketplace to scrape")
-    parser.add_argument("--url", type=str, help="Target Web Page URL to scrape (defaults to category best sellers link)")
-    parser.add_argument("--category", type=str, default="Electronics", help="Category label for products")
-    parser.add_argument("--price-check", action="store_true", help="Run automated price check on all tracked products in Supabase")
-    parser.add_argument("--compare", action="store_true", help="Display cross-marketplace price comparison table")
+    parser = argparse.ArgumentParser(description="ZenRows + Supabase Smart Home Price Comparison CLI")
+    parser.add_argument("--site", choices=["au", "intl"], default="au", help="Target website: 'au' (nxtsmarthome.com.au) or 'intl' (nxtsmart.homes)")
+    parser.add_argument("--marketplace", type=str, default="auto", help="Target marketplace or 'auto' for site default")
+    parser.add_argument("--url", type=str, help="Target Web Page URL to scrape")
+    parser.add_argument("--category", type=str, default="Smart Home", help="Category label for products")
+    parser.add_argument("--smarthome", action="store_true", help="Run smart home discovery and multi-offer matcher")
+    parser.add_argument("--min-offers", type=int, default=3, help="Minimum offers required per product (default 3)")
+    parser.add_argument("--price-check", action="store_true", help="Run automated price check on tracked products")
+    parser.add_argument("--compare", action="store_true", help="Display 3+ offer comparison matrix for target site")
     parser.add_argument("--demo", action="store_true", help="Run offline test demo with sample HTML fixtures")
 
     args = parser.parse_args()
@@ -93,86 +95,59 @@ def main():
         run_demo()
         return
 
-    # Check configuration status
-    missing_config = Config.validate()
-    if missing_config:
-        print("\n" + "!"*70)
-        print(" WARNING: Missing setup credentials in .env file:")
-        for key in missing_config:
-            print(f"   - {key}")
-        print("\n Please update .env with your ZENROWS_API_KEY, SUPABASE_URL, and SUPABASE_KEY.")
-        print(" To test offline without API keys, run: python main.py --demo")
-        print("!"*70 + "\n")
-
     fetcher = ZenRowsFetcher()
     supabase = SupabaseManager()
     tracker = PriceTrackerEngine(supabase=supabase, fetcher=fetcher)
+    matcher = SmartHomeMatcherEngine(supabase=supabase, fetcher=fetcher)
 
-    # 1. Price Check Mode
+    print("\n" + "="*80)
+    print(f" [SMART HOME PRICE COMPARISON ENGINE] SITE: {'nxtsmarthome.com.au' if args.site == 'au' else 'nxtsmart.homes'}")
+    print(f" Region: {'AU (Australia)' if args.site == 'au' else 'International (US, UK, CA, EU)'} | Min Offers Rule: {args.min_offers}+")
+    print("="*80 + "\n")
+
+    # 1. Compare View Mode (Querying 3+ offer views)
+    if args.compare:
+        print(f"=== FETCHING VALID COMPARISONS (MIN {args.min_offers} OFFERS) FOR: {args.site.upper()} ===")
+        comparisons = supabase.get_valid_smart_home_comparisons(site=args.site, limit=50)
+        print(f"Found {len(comparisons)} canonical products with >= {args.min_offers} active offers:\n")
+        
+        for c in comparisons:
+            print(f"-> [{c.get('category', 'Smart Home')}] {c.get('canonical_title')} ({c.get('brand')})")
+            print(f"   Offers Count: {c.get('active_offers_count')} | Price Range: ${c.get('lowest_price_aud', c.get('lowest_price'))} - ${c.get('highest_price_aud', c.get('highest_price'))} {c.get('currency', 'AUD')}")
+            for offer in c.get('offers', []):
+                print(f"   - {offer.get('retailer_name')}: ${offer.get('price')} ({offer.get('product_url')})")
+            print("-" * 75)
+        return
+
+    # 2. Smart Home Seed & Matcher Mode
+    if args.smarthome:
+        target_marketplaces = ["amazon_au", "jbhifi", "harveynorman"] if args.site == "au" else ["amazon", "bestbuy", "walmart"]
+        print(f"Running Smart Home Seed Crawl across: {target_marketplaces}")
+
+        for mkp in target_marketplaces:
+            url = DEFAULT_MARKETPLACE_URLS.get(mkp)
+            print(f"\n--- SCRAPING {mkp.upper()} SMART HOME CATALOG ---")
+            prods = scrape_marketplace_category(mkp, url, category=args.category, fetcher=fetcher, supabase=supabase)
+            
+            for prod in prods:
+                canonical, created = matcher.find_or_create_canonical_product(prod)
+                if created or True:
+                    # Enforce fetching at least 3 offers
+                    matcher.fetch_offers_for_canonical_product(canonical, region="AU" if args.site == "au" else "US")
+
+        print("\nSmart Home catalog indexing complete. Run 'python main.py --site " + args.site + " --compare' to view valid 3-offer comparison sets.")
+        return
+
+    # 3. Standard Price Check Mode
     if args.price_check:
         print("\n=== RUNNING AUTOMATED PRICE TRACKING CHECK ===")
-        results = tracker.refresh_all_tracked_prices(marketplace=None if args.marketplace == "all" else args.marketplace)
+        results = tracker.refresh_all_tracked_prices()
         print(f"Refreshed prices for {len(results)} items.")
         return
 
-    # 2. Compare View Mode
-    if args.compare:
-        print("\n=== CROSS-MARKETPLACE PRICE COMPARISON MATRIX ===")
-        products = supabase.get_tracked_products(limit=100)
-        if products:
-            tracker.print_price_comparison(products)
-        else:
-            print("No tracked products found in Supabase database. Run a scrape command first.")
-        return
-
-    # 3. Scrape Mode
-    all_scraped_products = []
-    target_marketplaces = ["amazon", "ebay", "walmart", "bestbuy", "target", "newegg", "aliexpress"] if args.marketplace == "all" else [args.marketplace]
-
-    for mkp in target_marketplaces:
-        target_url = args.url
-        if not target_url:
-            if args.category and args.category.lower() not in ["general", "deals", "today's deals", "top deals"]:
-                import urllib.parse
-                encoded_cat = urllib.parse.quote(args.category)
-                if mkp == "amazon":
-                    target_url = f"https://www.amazon.com/s?k={encoded_cat}"
-                elif mkp == "ebay":
-                    target_url = f"https://www.ebay.com/sch/i.html?_nkw={encoded_cat}"
-                elif mkp == "walmart":
-                    target_url = f"https://www.walmart.com/search?q={encoded_cat}"
-                elif mkp == "bestbuy":
-                    target_url = f"https://www.bestbuy.com/site/searchpage.jsp?st={encoded_cat}&intl=nosplash"
-                elif mkp == "target":
-                    target_url = f"https://www.target.com/s?searchTerm={encoded_cat}"
-                elif mkp == "newegg":
-                    target_url = f"https://www.newegg.com/p/pl?d={encoded_cat}"
-                elif mkp == "aliexpress":
-                    target_url = f"https://www.aliexpress.com/w/wholesale-{encoded_cat}.html"
-                else:
-                    target_url = DEFAULT_MARKETPLACE_URLS.get(mkp)
-            else:
-                target_url = DEFAULT_MARKETPLACE_URLS.get(mkp)
-
-        print(f"\n--- SCRAPING {mkp.upper()} TOP PRODUCTS ---")
-        print(f"Target URL : {target_url}")
-        print(f"Category   : {args.category}")
-        
-        prods = scrape_marketplace_category(
-            marketplace=mkp,
-            url=target_url,
-            category=args.category,
-            fetcher=fetcher,
-            supabase=supabase
-        )
-        all_scraped_products.extend(prods)
-
-    if all_scraped_products:
-        print(f"\nSuccessfully processed {len(all_scraped_products)} marketplace items.")
-        tracker.print_price_comparison(all_scraped_products)
-        
-        if supabase.is_connected():
-            tracker.auto_create_comparison_groups()
+    # Default fallback: run demo/help guidance
+    print("Use --smarthome to discover products, or --compare to view current comparison sets.")
 
 if __name__ == "__main__":
     main()
+

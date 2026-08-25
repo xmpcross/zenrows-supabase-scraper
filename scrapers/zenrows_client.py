@@ -7,7 +7,58 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 MARKETPLACE_PRESETS = {
+    # AU Retailers (for nxtsmarthome.com.au)
+    "amazon_au": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "ebay_au": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "jbhifi": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "harveynorman": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "thegoodguys": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "binglee": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+    "bunnings": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "au"
+    },
+
+    # US Retailers (for nxtsmart.homes)
     "amazon": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "us"
+    },
+    "amazon_us": {
         "js_render": "true",
         "antibot": "true",
         "premium_proxy": "true",
@@ -32,45 +83,58 @@ MARKETPLACE_PRESETS = {
         "premium_proxy": "true",
         "proxy_country": "us"
     },
-    "newegg": {
+    "bnh": {
         "js_render": "true",
         "antibot": "true",
         "premium_proxy": "true",
         "proxy_country": "us"
     },
-    "aliexpress": {
+
+    # UK Retailers (for nxtsmart.homes)
+    "amazon_uk": {
         "js_render": "true",
         "antibot": "true",
-        "premium_proxy": "true"
+        "premium_proxy": "true",
+        "proxy_country": "gb"
+    },
+    "currys": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "gb"
+    },
+
+    # CA Retailers (for nxtsmart.homes)
+    "amazon_ca": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "ca"
+    },
+    "bestbuy_ca": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "ca"
+    },
+
+    # EU Retailers (for nxtsmart.homes)
+    "amazon_de": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "de"
+    },
+    "mediamarkt": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "de"
     },
     "ebay": {
         "js_render": "true",
         "antibot": "true",
         "premium_proxy": "true"
-    },
-    "amazon_au": {
-        "js_render": "true",
-        "antibot": "true",
-        "premium_proxy": "true",
-        "proxy_country": "au"
-    },
-    "ebay_au": {
-        "js_render": "true",
-        "antibot": "true",
-        "premium_proxy": "true",
-        "proxy_country": "au"
-    },
-    "jbhifi": {
-        "js_render": "true",
-        "antibot": "true",
-        "premium_proxy": "true",
-        "proxy_country": "au"
-    },
-    "harveynorman": {
-        "js_render": "true",
-        "antibot": "true",
-        "premium_proxy": "true",
-        "proxy_country": "au"
     }
 }
 

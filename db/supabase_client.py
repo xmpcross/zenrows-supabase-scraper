@@ -147,6 +147,54 @@ class SupabaseManager:
             logger.error(f"Error fetching comparison matrix: {e}")
             return []
 
+    def upsert_canonical_product(self, canonical_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Upsert master smart home product into 'canonical_products' table.
+        """
+        if not self.client:
+            logger.warning(f"[Mock DB] Skipping canonical product upsert for: {canonical_data.get('title')}")
+            return {"status": "skipped", "id": "mock-canonical-id"}
+
+        try:
+            res = self.client.table("canonical_products").upsert(canonical_data).execute()
+            logger.info(f"Upserted Canonical Product: '{canonical_data.get('title')}'")
+            return {"status": "success", "data": res.data[0] if res.data else {}}
+        except Exception as e:
+            logger.error(f"Error upserting canonical product: {e}")
+            return {"status": "error", "error": str(e)}
+
+    def get_valid_smart_home_comparisons(self, site: str = "au", limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Queries database views for nxtsmarthome.com.au ('au') or nxtsmart.homes ('intl')
+        to return ONLY smart home products that have AT LEAST 3 active retailer offers.
+        """
+        if not self.client:
+            logger.info(f"[Mock DB] Returning sample 3-offer comparison set for site: {site}")
+            return [
+                {
+                    "canonical_product_id": "mock-ring-doorbell-id",
+                    "canonical_title": "Ring Video Doorbell 4",
+                    "brand": "Ring",
+                    "category": "Smart Security & Access",
+                    "active_offers_count": 3,
+                    "lowest_price": 249.00 if site == "au" else 159.99,
+                    "currency": "AUD" if site == "au" else "USD",
+                    "offers": [
+                        {"marketplace": "amazon_au" if site == "au" else "amazon_us", "price": 249.00, "retailer_name": "Amazon"},
+                        {"marketplace": "jbhifi" if site == "au" else "bestbuy", "price": 259.00, "retailer_name": "JB Hi-Fi" if site == "au" else "Best Buy"},
+                        {"marketplace": "harveynorman" if site == "au" else "walmart", "price": 269.00, "retailer_name": "Harvey Norman" if site == "au" else "Walmart"}
+                    ]
+                }
+            ]
+
+        view_name = "v_au_smart_home_comparisons" if site.lower() == "au" else "v_intl_smart_home_comparisons"
+        try:
+            res = self.client.table(view_name).select("*").limit(limit).execute()
+            return res.data or []
+        except Exception as e:
+            logger.error(f"Error querying {view_name}: {e}")
+            return []
+
     def log_scrape_run(
         self,
         target_url: str,
@@ -176,3 +224,4 @@ class SupabaseManager:
             self.client.table("scrape_logs").insert(log_entry).execute()
         except Exception as e:
             logger.warning(f"Failed to log scrape run to Supabase: {e}")
+

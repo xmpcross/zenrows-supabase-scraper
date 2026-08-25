@@ -1,15 +1,14 @@
-# 🛍️ ZenRows + Supabase Multi-Marketplace Product Scraper & Price Tracker
+# 🏡 Smart Home Electronics Price Comparison System (ZenRows + Supabase)
 
-An automated product extraction, price tracking, and price comparison system built using **ZenRows API** (anti-bot bypass, JavaScript rendering, premium rotating proxies) and **Supabase** (PostgreSQL with automated SQL triggers).
+An automated product extraction, price tracking, and price comparison system built using **ZenRows API** (anti-bot bypass, JavaScript rendering, regional rotating proxies) and **Supabase** (PostgreSQL with automated SQL triggers and views).
 
-Supports scraping top/trending products across **7 major e-commerce marketplaces**:
-- 🛒 **Amazon**: Best Sellers & Today's Deals (Goldbox)
-- 🏷️ **eBay**: Trending & popular listings
-- 🏪 **Walmart**: Category rankings & best sellers
-- 🟡 **Best Buy**: Top deals & tech rankings
-- 🎯 **Target**: Best sellers & trending items
-- 🥚 **Newegg**: Hardware & tech deals
-- 📦 **AliExpress**: Hot-selling products & order counts
+Powers two smart home price comparison platforms:
+1. 🇦🇺 **`nxtsmarthome.com.au`**: Australian market (fetching strictly from Australian stores: Amazon AU, JB Hi-Fi, Harvey Norman, The Good Guys, eBay AU, Bunnings).
+2. 🌐 **`nxtsmart.homes`**: International market (fetching from US, UK, Canada, and Europe: Amazon US/UK/CA/DE, Best Buy, Walmart, Target, Currys).
+
+> [!IMPORTANT]
+> **Core Business Rule - Minimum 3 Offers**:
+> No canonical smart home product will be displayed on either website unless it has **at least 3 valid retailer offers** within that site's target region. Enforced automatically at the database level via SQL views (`v_au_smart_home_comparisons` and `v_intl_smart_home_comparisons`).
 
 ---
 
@@ -21,37 +20,38 @@ Supports scraping top/trending products across **7 major e-commerce marketplaces
                                     | (Anti-Bot, JS, Proxy) |
                                     +-----------+-----------+
                                                 |
+                 +------------------------------+------------------------------+
+                 |                                                             |
+                 v                                                             v
++---------------------------------+                           +----------------------------------+
+|      AU Scraping Pipeline       |                           |      International Pipeline      |
+|  Retailers:                     |                           |  Regions: US, UK, CA, EU         |
+|  - Amazon AU (amazon.com.au)    |                           |  Retailers:                      |
+|  - JB Hi-Fi (jbhifi.com.au)     |                           |  - Amazon (US, UK, CA, DE)       |
+|  - Harvey Norman                |                           |  - Best Buy (US, CA)             |
+|  - The Good Guys                |                           |  - Walmart & Target (US)         |
+|  - eBay AU & Bunnings           |                           |  - Currys (UK) & MediaMarkt (DE) |
++----------------+----------------+                           +----------------+-----------------+
+                 |                                                             |
+                 +------------------------------+------------------------------+
+                                                |
                                                 v
-+---------------------------------------------------------------------------------------+
-|                              Multi-Marketplace Scrapers                               |
-|                                                                                       |
-|  +-------------------+  +------------------+  +-------------------+                   |
-|  |  Amazon Scraper   |  |   eBay Scraper   |  |  Walmart Scraper  |                   |
-|  |  (Deals/Bestseller|  |   (Trending)     |  |  (Category Rank)  |                   |
-|  +-------------------+  +------------------+  +-------------------+                   |
-|  +-------------------+  +------------------+  +-------------------+  +----------------+ |
-|  |  Best Buy Scraper |  |  Target Scraper  |  |  Newegg Scraper   |  | AliExpress Scp | |
-|  |  (Top Deals)      |  |  (Best Sellers)  |  |  (Hardware Deals) |  | (Hot Selling)  | |
-|  +-------------------+  +------------------+  +-------------------+  +----------------+ |
-+---------------------------------------+-----------------------------------------------+
-                                        |
-                                        v
-+---------------------------------------------------------------------------------------+
-|                          Data Processing & Comparison Engine                          |
-|  - Normalizes product titles, prices, stock, ratings & seller details                 |
-|  - Extracts Coupons & Savings Badges ("Save $20", "Save 15%")                         |
-|  - Parses Top Highlights, Technical Specifications & Item Details                     |
-|  - Clusters identical items across marketplaces into comparison groups                 |
-+---------------------------------------+-----------------------------------------------+
-                                        |
-                                        v
-+---------------------------------------------------------------------------------------+
-|                                    Supabase DB                                        |
-|  - marketplace_products (Multi-Marketplace catalog & image links)                     |
-|  - price_history (Automated price change snapshots via PostgreSQL trigger)            |
-|  - product_comparison_groups (Cross-marketplace matching)                             |
-|  - scrape_logs & categories                                                           |
-+---------------------------------------------------------------------------------------+
++------------------------------------------------------------------------------------------------+
+|                             Smart Home Matcher & Offer Engine                                  |
+|  - Categorizes into Smart Home Taxonomy (Security, Lighting, Hubs, Climate, Vacuums, etc.)    |
+|  - Normalizes Brand, Model, GTIN/UPC/EAN                                                       |
+|  - Enforces Rule: Active Offers Count >= 3 per Region                                           |
++-----------------------------------------------+------------------------------------------------+
+                                                |
+                                                v
++------------------------------------------------------------------------------------------------+
+|                                    Supabase DB                                                 |
+|  - canonical_products (Master Smart Home Catalog)                                              |
+|  - marketplace_products (Retailer listings with region tags)                                   |
+|  - price_history (Automated price change snapshots via PostgreSQL trigger)                     |
+|  - v_au_smart_home_comparisons (View for nxtsmarthome.com.au: AU region & >= 3 offers)         |
+|  - v_intl_smart_home_comparisons (View for nxtsmart.homes: US/UK/CA/EU & >= 3 offers)          |
++------------------------------------------------------------------------------------------------+
 ```
 
 ---
@@ -63,17 +63,18 @@ zenrows-supabase-scraper/
 ├── config.py                      # Environment configuration loader (.env parser)
 ├── main.py                        # CLI Orchestrator & Execution Runner
 ├── demo_seed.py                   # Offline test runner & sample HTML fixtures
-├── schema.sql                     # Supabase database schema & automated SQL triggers
+├── schema.sql                     # Supabase database schema, 3-offer views & SQL triggers
 ├── requirements.txt               # Project dependencies (zenrows, supabase, bs4, etc.)
 ├── .gitignore                     # Excludes secrets & virtual environments from git
 ├── .env.example                   # Template environment file
 ├── db/
-│   └── supabase_client.py         # Supabase client manager & price history queries
+│   └── supabase_client.py         # Supabase manager & 3-offer comparison query layer
 ├── scrapers/
-│   ├── zenrows_client.py          # ZenRows API client with marketplace presets
-│   └── marketplace_scrapers.py    # Parsers for Amazon, eBay, Walmart, Best Buy, Target, Newegg, & AliExpress
+│   ├── zenrows_client.py          # ZenRows API client with regional proxies (au, us, gb, ca, de)
+│   └── marketplace_scrapers.py    # Parsers for AU (JB Hi-Fi, Harvey Norman, etc.) & Intl stores
 └── services/
-    └── price_tracker.py           # Auto price update, price drop detector & comparison matrix
+    ├── price_tracker.py           # Auto price update & price drop detector
+    └── smart_home_matcher.py      # Brand/Model parser, canonical product matcher & 3-offer finder
 ```
 
 ---
@@ -108,132 +109,58 @@ DEFAULT_ANTIBOT=true
 
 ### 4. Set Up Supabase Database Schema
 Copy the contents of [`schema.sql`](schema.sql) into your **[Supabase SQL Editor](https://supabase.com/dashboard/project/your-project-id/sql)** and click **Run**. This creates:
-- `marketplace_products` (catalog for products, coupons, images, and descriptions)
-- `price_history` (historic price change snapshots)
-- `product_comparison_groups` & `comparison_group_items` (cross-marketplace price matching)
-- **Automated SQL Trigger** (`trg_marketplace_products_price_change`): Appends a record to `price_history` whenever product prices update.
+- `canonical_products` (master catalog for Ring, Nest, Philips Hue, Eufy, Arlo, etc.)
+- `marketplace_products` (retailer listings with `region` tags)
+- `v_au_smart_home_comparisons` (SQL View for `nxtsmarthome.com.au` with $\ge 3$ AU offers)
+- `v_intl_smart_home_comparisons` (SQL View for `nxtsmart.homes` with $\ge 3$ Intl offers)
+- **Automated SQL Trigger** (`trg_marketplace_products_price_change`): Appends price history snapshots whenever product prices change.
 
 ---
 
 ## 🚀 Usage & CLI Commands
 
-### Run Offline Test Demo (No API Credits Required)
+### 1. Run Offline Test Demo
 ```bash
 python main.py --demo
 ```
 
-### Scrape Live Products from a Specific Marketplace
+### 2. Run Smart Home Scraper & Offer Matcher for Australia (`nxtsmarthome.com.au`)
 ```bash
-# Scrape Amazon Today's Deals (Goldbox)
-python main.py --marketplace amazon --category "Today's Deals"
-
-# Scrape Best Buy Top Deals
-python main.py --marketplace bestbuy --category Electronics
-
-# Scrape Target Best Sellers
-python main.py --marketplace target --category Electronics
-
-# Scrape Newegg Tech Deals
-python main.py --marketplace newegg --category Computers
-
-# Scrape Walmart Category Rankings
-python main.py --marketplace walmart --category Electronics
+python main.py --site au --smarthome
 ```
 
-### Scrape All 7 Marketplaces at Once
+### 3. Run Smart Home Scraper & Offer Matcher for International (`nxtsmart.homes`)
 ```bash
-# Scrape all 7 marketplaces at once (Amazon, eBay, Walmart, Best Buy, Target, Newegg, AliExpress)
-python main.py --marketplace all
+python main.py --site intl --smarthome
 ```
 
-### Run Automated Price History Refresh (Price Check)
+### 4. Query Valid 3+ Offer Comparisons for Frontend Platforms
 ```bash
-# Re-check prices for existing tracked products and log price drops to price_history
-python main.py --price-check
-```
+# View comparisons for Australian site (nxtsmarthome.com.au)
+python main.py --site au --compare
 
-### Display Cross-Marketplace Price Comparison Matrix
-```bash
-# Print cross-marketplace price comparison table
-python main.py --compare
+# View comparisons for International site (nxtsmart.homes)
+python main.py --site intl --compare
 ```
 
 ---
 
-## 🗂️ Querying Categories in Supabase (SQL & REST API)
+## 🛡️ Geo-Proxy Scraping Strategies in ZenRows
 
-### 1. In Supabase SQL Editor
-
-#### Find total products & average price grouped by category:
-```sql
-SELECT 
-    category, 
-    COUNT(*) AS product_count, 
-    ROUND(AVG(current_price), 2) AS avg_price 
-FROM public.marketplace_products 
-GROUP BY category 
-ORDER BY product_count DESC;
-```
-
-#### Filter products within a specific category:
-```sql
-SELECT title, current_price, marketplace, product_url 
-FROM public.marketplace_products 
-WHERE category ILIKE '%Headphones%'
-ORDER BY current_price ASC;
-```
-
-### 2. Hierarchical Category Table (`categories`)
-Your database schema includes a dedicated `categories` table linked via foreign key (`category_id`):
-
-```sql
--- Query nested parent-child categories
-SELECT 
-    parent.name AS main_category, 
-    child.name AS sub_category
-FROM public.categories child
-LEFT JOIN public.categories parent ON child.parent_id = parent.id;
-```
-
-This allows you to build multi-level category navigation (e.g., *Electronics -> Audio -> Headphones*) as your database grows to tens of thousands of listings!
-
----
-
-## 🛡️ Marketplace Scraping Strategies in ZenRows
-
-| Marketplace | `antibot` | `js_render` | `premium_proxy` | Description / Strategy |
-| :--- | :---: | :---: | :---: | :--- |
-| **Amazon** | `true` | `true` | `true` | Solves Amazon CAPTCHAs & parses Best Seller & Goldbox Deals grid faceouts |
-| **Walmart** | `true` | `true` | `true` | Bypasses Akamai WAF and extracts `__NEXT_DATA__` JSON |
-| **Best Buy** | `true` | `true` | `true` | Bypasses Akamai IP locks & extracts SKU product cards |
-| **Target** | `true` | `true` | `true` | Solves Target RedSky / PerimeterX bot protections |
-| **Newegg** | `true` | `true` | `true` | Bypasses Incapsula & parses item containers |
-| **AliExpress** | `true` | `true` | `true` | Renders dynamic React SPAs & parses `_INITIAL_DATA_` |
-| **eBay** | `true` | `false` | `false` | Fast DOM parsing of eBay search & category listings |
-
----
-
-## 📊 Extracted Product Schema
-
-Each scraped listing includes the following fields in Supabase:
-
-| Field Name | Type | Description |
-| :--- | :--- | :--- |
-| `marketplace` | `VARCHAR(50)` | Marketplace source (`amazon`, `ebay`, `walmart`, `bestbuy`, `target`, `newegg`, `aliexpress`) |
-| `external_id` | `TEXT` | Listing ID (ASIN, Item ID, SKU, TCIN) |
-| `title` | `TEXT` | Clean Product Name |
-| `current_price` | `NUMERIC(12,2)` | Active selling price |
-| `original_price` | `NUMERIC(12,2)` | Regular / List price before discount |
-| `coupon_text` | `TEXT` | Coupon badge text (e.g. *"Save $20 with coupon"*, *"Save 15%"*) |
-| `coupon_code` | `TEXT` | Savings promotional code |
-| `short_description` | `TEXT` | Key feature bullet points / Top Highlights summary |
-| `description` | `TEXT` | Detailed product specifications & overview |
-| `rank_position` | `INTEGER` | Category ranking position (e.g. `#1`, `#2`) |
-| `rating` | `NUMERIC(3,2)` | Customer review rating score (out of 5) |
-| `review_count` | `INTEGER` | Total number of reviews |
-| `image_url` | `TEXT` | High-res primary thumbnail link |
-| `product_url` | `TEXT` | Direct listing URL |
-| `metadata` | `JSONB` | Extracted top highlights & specifications dictionary |
+| Store / Retailer | Region | `proxy_country` | `js_render` | `antibot` | Target Site |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Amazon AU** | AU | `au` | `true` | `true` | nxtsmarthome.com.au |
+| **JB Hi-Fi** | AU | `au` | `true` | `true` | nxtsmarthome.com.au |
+| **Harvey Norman** | AU | `au` | `true` | `true` | nxtsmarthome.com.au |
+| **The Good Guys** | AU | `au` | `true` | `true` | nxtsmarthome.com.au |
+| **eBay AU** | AU | `au` | `true` | `true` | nxtsmarthome.com.au |
+| **Amazon US** | US | `us` | `true` | `true` | nxtsmart.homes |
+| **Best Buy US** | US | `us` | `true` | `true` | nxtsmart.homes |
+| **Walmart** | US | `us` | `true` | `true` | nxtsmart.homes |
+| **Target** | US | `us` | `true` | `true` | nxtsmart.homes |
+| **Currys UK** | UK | `gb` | `true` | `true` | nxtsmart.homes |
+| **Amazon UK** | UK | `gb` | `true` | `true` | nxtsmart.homes |
+| **MediaMarkt DE** | DE | `de` | `true` | `true` | nxtsmart.homes |
 
 ---
 
@@ -241,4 +168,5 @@ Each scraped listing includes the following fields in Supabase:
 
 - Real API keys belong **only** in `.env`.
 - `.env` is listed in `.gitignore` to prevent accidental pushes to public repositories.
-- Use `.env.example` as a template when cloning or deploying to new environments.
+- Use `.env.example` as a template when deploying to production environments.
+

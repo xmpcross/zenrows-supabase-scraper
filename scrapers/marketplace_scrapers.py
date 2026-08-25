@@ -16,14 +16,13 @@ def clean_price(price_str: Optional[str]) -> Optional[float]:
         return None
 
 KNOWN_BRANDS = [
-    "Apple", "Sony", "Samsung", "Asus", "Acer", "Lenovo", "Dell", "HP", "Bose",
-    "Logitech", "Microsoft", "Nintendo", "LG", "Nike", "Under Armour", "KitchenAid",
-    "Keurig", "Coleman", "Honeywell", "Milwaukee", "Seagate", "Western Digital", "Corsair",
-    "Anker", "JBL", "Garmin", "GoPro", "Sennheiser", "Dyson", "iRobot", "Breville",
-    "Ninja", "Instant Pot", "HexClad", "TruSkin", "Soundcore", "TP-Link", "Level8",
-    "T4Tream", "hOmeLabs", "Nuwave", "Citizen", "Grownsy", "Vivo", "Vongrasig",
-    "Kamrui", "Hiboy", "Typhur", "Hbada", "Alorair", "Big Horn", "Polk Audio",
-    "Auxito", "Eufy", "Drakes Pride", "Estee Lauder", "Forge Skin", "Zebco", "Pokemon"
+    # Top Smart Home & Electronics Brands
+    "Ring", "Nest", "Google Nest", "Philips Hue", "Hue", "Eufy", "Arlo", "Ecobee",
+    "Roborock", "Aqara", "TP-Link", "Kasa", "Tapo", "Sonos", "Eve", "Nanoleaf",
+    "Blink", "Yale", "SwitchBot", "August", "Sensibo", "Netatmo", "Belkin", "Wemo",
+    "Reolink", "Dyson", "iRobot", "Roomba", "Dreame", "Ecovacs", "Wyze", "Leviton",
+    "Lutron", "Meross", "Govee", "Sennheiser", "Bose", "Sony", "Apple", "Samsung",
+    "LG", "Logitech", "Anker", "JBL", "Garmin", "GoPro", "Milwaukee", "Honeywell"
 ]
 
 def clean_text(text: Optional[str]) -> Optional[str]:
@@ -711,23 +710,227 @@ def parse_aliexpress_hotselling(html_content: str, category: str = "General") ->
 
 
 # ==========================================
-# UNIFIED ROUTER (7 SUPPORTED MARKETPLACES)
+# 8. AUSTRALIAN RETAILERS (nxtsmarthome.com.au)
 # ==========================================
-def parse_marketplace_page(html_content: str, url: str, marketplace: str, category: str = "General") -> List[Dict[str, Any]]:
+def parse_jbhifi(html_content: str, category: str = "Smart Home") -> List[Dict[str, Any]]:
+    soup = BeautifulSoup(html_content, "lxml")
+    products = []
+    card_elements = soup.select("a[href*='/products/'], div[data-testid='product-card'], div[class*='ProductCard']")
+    rank = 1
+    seen = set()
+
+    for card in card_elements:
+        href = card.get("href", "") if card.name == "a" else (card.select_one("a[href*='/products/']") or {}).get("href", "")
+        if not href or href in seen:
+            continue
+        product_url = f"https://www.jbhifi.com.au{href.split('?')[0]}" if href.startswith("/") else href.split("?")[0]
+        seen.add(product_url)
+
+        title_elem = card.select_one("h3, h4, span[class*='title' i], p[class*='title' i]") or card
+        title = title_elem.get_text(strip=True) if title_elem else None
+        if not title or len(title) < 5 or "JB Hi-Fi" in title:
+            continue
+
+        price_elem = card.select_one("span[class*='price' i], div[class*='price' i]")
+        price = clean_price(price_elem.get_text()) if price_elem else None
+        img_elem = card.select_one("img")
+        img_url = img_elem.get("src") if img_elem else None
+
+        products.append({
+            "marketplace": "jbhifi",
+            "region": "AU",
+            "external_id": href.split("/")[-1],
+            "title": clean_text(title),
+            "brand": extract_brand(title, card),
+            "category": category,
+            "current_price": price,
+            "original_price": None,
+            "discount_percent": None,
+            "currency": "AUD",
+            "rank_position": rank,
+            "rating": None,
+            "review_count": 0,
+            "seller_name": "JB Hi-Fi Australia",
+            "is_available": True,
+            "product_url": product_url,
+            "image_url": img_url,
+            "images": [img_url] if img_url else [],
+            "metadata": {"store": "jbhifi"}
+        })
+        rank += 1
+    return products
+
+def parse_harveynorman(html_content: str, category: str = "Smart Home") -> List[Dict[str, Any]]:
+    soup = BeautifulSoup(html_content, "lxml")
+    products = []
+    card_elements = soup.select("div.product-item, div[class*='product-card' i], div[data-product-id]")
+    rank = 1
+    seen = set()
+
+    for card in card_elements:
+        link_elem = card.select_one("a.product-title, a[href*='.html']")
+        if not link_elem:
+            continue
+        href = link_elem.get("href", "")
+        if not href or href in seen:
+            continue
+        product_url = f"https://www.harveynorman.com.au{href.split('?')[0]}" if href.startswith("/") else href.split("?")[0]
+        seen.add(product_url)
+
+        title = link_elem.get_text(strip=True)
+        price_elem = card.select_one("span.price, div.price-box, [class*='price' i]")
+        price = clean_price(price_elem.get_text()) if price_elem else None
+        img_elem = card.select_one("img")
+        img_url = img_elem.get("src") if img_elem else None
+
+        products.append({
+            "marketplace": "harveynorman",
+            "region": "AU",
+            "external_id": card.get("data-product-id") or href.split("/")[-1],
+            "title": clean_text(title),
+            "brand": extract_brand(title, card),
+            "category": category,
+            "current_price": price,
+            "original_price": None,
+            "discount_percent": None,
+            "currency": "AUD",
+            "rank_position": rank,
+            "rating": None,
+            "review_count": 0,
+            "seller_name": "Harvey Norman Australia",
+            "is_available": True,
+            "product_url": product_url,
+            "image_url": img_url,
+            "images": [img_url] if img_url else [],
+            "metadata": {"store": "harveynorman"}
+        })
+        rank += 1
+    return products
+
+def parse_thegoodguys(html_content: str, category: str = "Smart Home") -> List[Dict[str, Any]]:
+    soup = BeautifulSoup(html_content, "lxml")
+    products = []
+    card_elements = soup.select("div.product-tile, div[class*='productCard' i]")
+    rank = 1
+    seen = set()
+
+    for card in card_elements:
+        link_elem = card.select_one("a[href*='/p/'], a.product-tile-title")
+        if not link_elem:
+            continue
+        href = link_elem.get("href", "")
+        if not href or href in seen:
+            continue
+        product_url = f"https://www.thegoodguys.com.au{href.split('?')[0]}" if href.startswith("/") else href.split("?")[0]
+        seen.add(product_url)
+
+        title = link_elem.get_text(strip=True)
+        price_elem = card.select_one("span.pricepoint-price, div.price, [class*='price' i]")
+        price = clean_price(price_elem.get_text()) if price_elem else None
+        img_elem = card.select_one("img")
+        img_url = img_elem.get("src") if img_elem else None
+
+        products.append({
+            "marketplace": "thegoodguys",
+            "region": "AU",
+            "external_id": href.split("/")[-1],
+            "title": clean_text(title),
+            "brand": extract_brand(title, card),
+            "category": category,
+            "current_price": price,
+            "original_price": None,
+            "discount_percent": None,
+            "currency": "AUD",
+            "rank_position": rank,
+            "rating": None,
+            "review_count": 0,
+            "seller_name": "The Good Guys Australia",
+            "is_available": True,
+            "product_url": product_url,
+            "image_url": img_url,
+            "images": [img_url] if img_url else [],
+            "metadata": {"store": "thegoodguys"}
+        })
+        rank += 1
+    return products
+
+
+# ==========================================
+# UNIFIED ROUTER (AU + INTL MARKETPLACES)
+# ==========================================
+def parse_marketplace_page(html_content: str, url: str, marketplace: str, category: str = "Smart Home") -> List[Dict[str, Any]]:
     m = marketplace.lower()
-    if m == "amazon":
-        return parse_amazon_bestsellers(html_content, category)
-    elif m == "ebay":
-        return parse_ebay_trending(html_content, category)
+    if m in ["amazon", "amazon_us"]:
+        items = parse_amazon_bestsellers(html_content, category)
+        for item in items:
+            item["region"] = "US"
+            item["currency"] = "USD"
+        return items
+    elif m == "amazon_au":
+        items = parse_amazon_bestsellers(html_content, category)
+        for item in items:
+            item["marketplace"] = "amazon_au"
+            item["region"] = "AU"
+            item["currency"] = "AUD"
+            item["seller_name"] = "Amazon Australia"
+            if "amazon.com" in item["product_url"] and "amazon.com.au" not in item["product_url"]:
+                item["product_url"] = item["product_url"].replace("amazon.com", "amazon.com.au")
+        return items
+    elif m == "amazon_uk":
+        items = parse_amazon_bestsellers(html_content, category)
+        for item in items:
+            item["marketplace"] = "amazon_uk"
+            item["region"] = "UK"
+            item["currency"] = "GBP"
+            item["seller_name"] = "Amazon UK"
+        return items
+    elif m in ["ebay", "ebay_us"]:
+        items = parse_ebay_trending(html_content, category)
+        for item in items:
+            item["region"] = "US"
+            item["currency"] = "USD"
+        return items
+    elif m == "ebay_au":
+        items = parse_ebay_trending(html_content, category)
+        for item in items:
+            item["marketplace"] = "ebay_au"
+            item["region"] = "AU"
+            item["currency"] = "AUD"
+        return items
+    elif m == "jbhifi":
+        return parse_jbhifi(html_content, category)
+    elif m == "harveynorman":
+        return parse_harveynorman(html_content, category)
+    elif m == "thegoodguys":
+        return parse_thegoodguys(html_content, category)
     elif m == "walmart":
-        return parse_walmart_bestsellers(html_content, category)
-    elif m == "bestbuy":
-        return parse_bestbuy_bestsellers(html_content, category)
+        items = parse_walmart_bestsellers(html_content, category)
+        for item in items:
+            item["region"] = "US"
+            item["currency"] = "USD"
+        return items
+    elif m in ["bestbuy", "bestbuy_us"]:
+        items = parse_bestbuy_bestsellers(html_content, category)
+        for item in items:
+            item["region"] = "US"
+            item["currency"] = "USD"
+        return items
     elif m == "target":
-        return parse_target_bestsellers(html_content, category)
+        items = parse_target_bestsellers(html_content, category)
+        for item in items:
+            item["region"] = "US"
+            item["currency"] = "USD"
+        return items
     elif m == "newegg":
-        return parse_newegg_bestsellers(html_content, category)
+        items = parse_newegg_bestsellers(html_content, category)
+        for item in items:
+            item["region"] = "US"
+            item["currency"] = "USD"
+        return items
     elif m == "aliexpress":
         return parse_aliexpress_hotselling(html_content, category)
     else:
-        raise ValueError(f"Unsupported marketplace: '{marketplace}'. Supported: amazon, ebay, walmart, bestbuy, target, newegg, aliexpress")
+        # Fallback to amazon parsing logic if unknown
+        logger.warning(f"Unknown marketplace '{marketplace}', attempting Amazon parser fallback.")
+        return parse_amazon_bestsellers(html_content, category)
+
