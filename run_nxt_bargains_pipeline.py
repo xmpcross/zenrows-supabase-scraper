@@ -111,11 +111,19 @@ def run_nxt_bargains_pipeline():
     best_sellers_summary = best_sellers_engine.fetch_and_ingest_best_sellers(niche="smart_home", region="US", limit_per_category=3)
     logger.info(f"Phase 3 Complete: Ingested {best_sellers_summary['total_extracted']} Best Sellers across top categories.")
 
+    # PHASE 4: Single-Offer Product Enrichment (Upgrading < 3 Offers Products to Live Status)
+    logger.info("\n--- PHASE 4: Single-Offer Product Enrichment (Upgrading Products to 3+ Offers) ---")
+    from services.single_offer_enricher import SingleOfferEnricher
+    enricher = SingleOfferEnricher(supabase=supabase, dataforseo=dfs_fetcher, matcher=matcher)
+    enrichment_summary = enricher.enrich_single_offer_products(limit=5, region="US")
+    logger.info(f"Phase 4 Complete: Enriched {enrichment_summary['enriched_count']} products | Upgraded {enrichment_summary['upgraded_to_3plus']} products to 3+ Active Offers!")
+
     logger.info("\n=========================================================================")
     logger.info("  NXT.BARGAINS PIPELINE EXECUTION SUCCESSFUL!")
     logger.info(f"  • DataForSEO Offers Processed: {dfs_extracted_count}")
     logger.info(f"  • ZenRows Deal Offers Ingested: {deals_summary['total_extracted']}")
     logger.info(f"  • Best Sellers Ingested: {best_sellers_summary['total_extracted']}")
+    logger.info(f"  • Products Upgraded to 3+ Offers: {enrichment_summary['upgraded_to_3plus']}")
     logger.info("=========================================================================")
 
 if __name__ == "__main__":

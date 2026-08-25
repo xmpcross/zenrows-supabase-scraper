@@ -82,6 +82,20 @@ TARGET_DEAL_PAGES = {
         "marketplace": "sephora",
         "proxy_country": "us",
         "niche": "beauty_skincare"
+    },
+    "target": {
+        "url": "https://www.target.com/c/top-deals/-/N-4xubz",
+        "region": "US",
+        "marketplace": "target",
+        "proxy_country": "us",
+        "niche": "smart_home"
+    },
+    "newegg": {
+        "url": "https://www.newegg.com/todays-deals",
+        "region": "US",
+        "marketplace": "newegg",
+        "proxy_country": "us",
+        "niche": "smart_home"
     }
 }
 
