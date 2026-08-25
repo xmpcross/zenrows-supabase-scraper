@@ -117,6 +117,13 @@ def parse_amazon_bestsellers(html_content: str, category: str = "General") -> Li
         price_elem = card.select_one("span._cDE12_price_1bkM5, span.p13n-sc-price, span.a-price span.a-offscreen, span.a-color-price")
         current_price = clean_price(price_elem.get_text()) if price_elem else None
 
+        orig_price_elem = card.select_one("span.a-text-price span.a-offscreen, span.basisPrice span.a-offscreen, span[data-a-strike='true'] span.a-offscreen, span.a-price[data-a-strike='true']")
+        original_price = clean_price(orig_price_elem.get_text()) if orig_price_elem else None
+
+        discount_percent = None
+        if current_price and original_price and original_price > current_price:
+            discount_percent = round(((original_price - current_price) / original_price) * 100, 2)
+
         rating_elem = card.select_one("i.a-icon-star, span.a-icon-alt")
         rating = None
         if rating_elem:
@@ -147,8 +154,8 @@ def parse_amazon_bestsellers(html_content: str, category: str = "General") -> Li
                 "brand": extract_brand(title, card),
                 "category": category,
                 "current_price": current_price,
-                "original_price": None,
-                "discount_percent": None,
+                "original_price": original_price,
+                "discount_percent": discount_percent,
                 "currency": "USD",
                 "rank_position": rank_pos,
                 "rating": rating,
