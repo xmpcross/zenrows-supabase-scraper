@@ -5,10 +5,11 @@ An automated product extraction, price tracking, and price comparison system bui
 Powers two smart home price comparison platforms:
 1. 🇦🇺 **`nxtsmarthome.com.au`**: Australian market (fetching strictly from Australian stores: Amazon AU, JB Hi-Fi, Harvey Norman, The Good Guys, eBay AU, Bunnings).
 2. 🌐 **`nxtsmart.homes`**: International market (fetching from US, UK, Canada, and Europe: Amazon US/UK/CA/DE, Best Buy, Walmart, Target, Currys).
+3. ✨ **`www.bestlooking.skin`**: International Beauty, Skincare & Youth-Promoting Supplements *(US, UK, CA, EU, AU, NZ: Sephora, Ulta, iHerb, Amazon, eBay, Boots, Mecca, Adore Beauty, Lookfantastic, Chemist Warehouse)*.
 
 > [!IMPORTANT]
 > **Core Business Rule - Minimum 3 Offers**:
-> No canonical smart home product will be displayed on either website unless it has **at least 3 valid retailer offers** within that site's target region. Enforced automatically at the database level via SQL views (`v_au_smart_home_comparisons` and `v_intl_smart_home_comparisons`).
+> No canonical product will be displayed on any of the 3 sites unless it has **at least 3 valid retailer offers** within that site's target region. Enforced automatically at the database level via SQL views (`v_au_smart_home_comparisons`, `v_intl_smart_home_comparisons`, and `v_beauty_skincare_comparisons`).
 
 ---
 

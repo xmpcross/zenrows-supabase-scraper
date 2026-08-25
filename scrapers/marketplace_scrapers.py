@@ -21,8 +21,16 @@ KNOWN_BRANDS = [
     "Roborock", "Aqara", "TP-Link", "Kasa", "Tapo", "Sonos", "Eve", "Nanoleaf",
     "Blink", "Yale", "SwitchBot", "August", "Sensibo", "Netatmo", "Belkin", "Wemo",
     "Reolink", "Dyson", "iRobot", "Roomba", "Dreame", "Ecovacs", "Wyze", "Leviton",
-    "Lutron", "Meross", "Govee", "Sennheiser", "Bose", "Sony", "Apple", "Samsung",
-    "LG", "Logitech", "Anker", "JBL", "Garmin", "GoPro", "Milwaukee", "Honeywell"
+    
+    # Top Beauty, Skincare & Youth Supplement Brands
+    "The Ordinary", "CeraVe", "La Roche-Posay", "Paula's Choice", "Glow Recipe",
+    "SkinCeuticals", "Drunk Elephant", "Estée Lauder", "Clinique", "Laneige",
+    "COSRX", "Supergoop!", "Sunday Riley", "Kiehl's", "Tatcha", "Youth to the People",
+    "Sol de Janeiro", "Fenty Skin", "NARS", "Charlotte Tilbury", "Urban Decay", "MAC",
+    "Olaplex", "Dermalogica", "Vital Proteins", "Codeage", "Sports Research", "Solgar",
+    "Thorne", "Garden of Life", "NOW Foods", "Reserveage", "NeoCell", "HUM Nutrition",
+    "OLLY", "Life Extension", "Nature's Bounty", "Swisse", "Blackmores",
+    "Sennheiser", "Bose", "Sony", "Apple", "Samsung", "LG", "Logitech", "Anker", "JBL"
 ]
 
 def clean_text(text: Optional[str]) -> Optional[str]:
@@ -856,6 +864,71 @@ def parse_thegoodguys(html_content: str, category: str = "Smart Home") -> List[D
 
 
 # ==========================================
+# 9. IHERB PARSER (Beauty & Supplements)
+# ==========================================
+def parse_iherb(html_content: str, category: str = "Beauty & Supplements") -> List[Dict[str, Any]]:
+    soup = BeautifulSoup(html_content, "lxml")
+    products = []
+    card_elements = soup.select("div.product-cell, div.absolute-link-wrapper, div[class*='product-card' i]")
+    rank = 1
+    seen = set()
+
+    for card in card_elements:
+        link_elem = card.select_one("a.product-link, a[href*='/pr/']")
+        if not link_elem:
+            continue
+        href = link_elem.get("href", "")
+        if not href or href in seen:
+            continue
+        product_url = f"https://www.iherb.com{href.split('?')[0]}" if href.startswith("/") else href.split("?")[0]
+        seen.add(product_url)
+
+        title_elem = card.select_one("div.product-title, span.product-title, .product-name") or link_elem
+        title = title_elem.get_text(strip=True) if title_elem else None
+        if not title or len(title) < 5:
+            continue
+
+        price_elem = card.select_one("span.price, div.price, [class*='price' i]")
+        price = clean_price(price_elem.get_text()) if price_elem else None
+        
+        rating_elem = card.select_one("a.rating-count, span.rating, [aria-label*='stars']")
+        rating = None
+        if rating_elem:
+            r_match = re.search(r"(\d+(?:\.\d+)?)", rating_elem.get_text() or rating_elem.get("aria-label", ""))
+            if r_match:
+                rating = float(r_match.group(1))
+
+        img_elem = card.select_one("img")
+        img_url = img_elem.get("src") or img_elem.get("data-src") if img_elem else None
+
+        pid = href.split("/")[-1]
+
+        products.append({
+            "marketplace": "iherb",
+            "region": "US",
+            "external_id": pid,
+            "title": clean_text(title),
+            "brand": extract_brand(title, card),
+            "category": category,
+            "current_price": price,
+            "original_price": None,
+            "discount_percent": None,
+            "currency": "USD",
+            "rank_position": rank,
+            "rating": rating,
+            "review_count": 0,
+            "seller_name": "iHerb",
+            "is_available": True,
+            "product_url": product_url,
+            "image_url": img_url,
+            "images": [img_url] if img_url else [],
+            "metadata": {"store": "iherb"}
+        })
+        rank += 1
+    return products
+
+
+# ==========================================
 # UNIFIED ROUTER (AU + INTL MARKETPLACES)
 # ==========================================
 def parse_marketplace_page(html_content: str, url: str, marketplace: str, category: str = "Smart Home") -> List[Dict[str, Any]]:
@@ -903,6 +976,8 @@ def parse_marketplace_page(html_content: str, url: str, marketplace: str, catego
         return parse_harveynorman(html_content, category)
     elif m == "thegoodguys":
         return parse_thegoodguys(html_content, category)
+    elif m == "iherb":
+        return parse_iherb(html_content, category)
     elif m == "walmart":
         items = parse_walmart_bestsellers(html_content, category)
         for item in items:
@@ -933,4 +1008,5 @@ def parse_marketplace_page(html_content: str, url: str, marketplace: str, catego
         # Fallback to amazon parsing logic if unknown
         logger.warning(f"Unknown marketplace '{marketplace}', attempting Amazon parser fallback.")
         return parse_amazon_bestsellers(html_content, category)
+
 

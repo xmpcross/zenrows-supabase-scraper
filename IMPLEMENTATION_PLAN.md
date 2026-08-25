@@ -4,7 +4,7 @@ Comprehensive architecture, database design, ZenRows scraping pipeline, product 
 
 1. 🇦🇺 **`nxtsmarthome.com.au`**: Australian Smart Home Electronics *(Amazon AU, JB Hi-Fi, Harvey Norman, The Good Guys, eBay AU, Bunnings)*
 2. 🌐 **`nxtsmart.homes`**: International Smart Home Electronics *(US, UK, CA, EU: Amazon, Best Buy, Walmart, Target, Currys, MediaMarkt)*
-3. ✨ **`www.bestlooking.skin`**: International Beauty & Skincare *(US, UK, CA, EU, AU, NZ: Sephora, Ulta, Boots, Mecca, Adore Beauty, Lookfantastic, Chemist Warehouse)*
+3. ✨ **`www.bestlooking.skin`**: International Beauty, Skincare & Anti-Aging Supplements *(US, UK, CA, EU, AU, NZ: Sephora, Ulta, iHerb, Amazon, eBay, Boots, Mecca, Adore Beauty, Lookfantastic, Chemist Warehouse)*
 
 ---
 
@@ -20,9 +20,9 @@ The system architecture supports multi-tenant niche platforms sharing a unified 
   - Scope: `niche = 'smart_home'`, `region IN ('US', 'UK', 'CA', 'EU')`, currencies `USD`, `GBP`, `CAD`, `EUR`.
   - Target Retailers: Amazon US/UK/CA/DE, Best Buy US/CA, Walmart, Target, Currys UK, MediaMarkt DE.
 
-- **Site 3: `www.bestlooking.skin` (International Beauty & Skincare)**
+- **Site 3: `www.bestlooking.skin` (International Beauty, Skincare & Skin-Youth Supplements)**
   - Scope: `niche = 'beauty_skincare'`, `region IN ('US', 'UK', 'CA', 'EU', 'AU', 'NZ')`, currencies `USD`, `GBP`, `CAD`, `EUR`, `AUD`, `NZD`.
-  - Target Retailers: Sephora (US/CA/UK/EU/AU), Ulta Beauty (US), Boots (UK), Mecca (AU/NZ), Adore Beauty (AU), Chemist Warehouse (AU/NZ), Dermstore, Lookfantastic, Cult Beauty, Amazon.
+  - Target Retailers: **iHerb**, **Amazon**, **eBay**, Sephora (US/CA/UK/EU/AU), Ulta Beauty (US), Boots (UK), Mecca (AU/NZ), Adore Beauty (AU), Chemist Warehouse (AU/NZ), Dermstore, Lookfantastic, Cult Beauty.
 
 - **Core Rule - Minimum 3 Offers**:
   No canonical product will be displayed on any of the 3 sites unless it has **at least 3 active retailer offers** within that site's target region and niche.
@@ -41,12 +41,12 @@ The system architecture supports multi-tenant niche platforms sharing a unified 
         |                                       |                                       |
         v                                       v                                       v
 +-----------------------+               +-----------------------+               +-----------------------+
-|  AU Smart Home Pipeline|               | Intl Smart Home Pipeline|               |  Beauty & Skincare Pipeline|
+|  AU Smart Home Pipeline|               | Intl Smart Home Pipeline|               | Beauty & Youth Supplements|
 |  Retailers:           |               |  Regions: US, UK, CA, EU|               |  Regions: US/UK/CA/EU/AU/NZ|
 |  - Amazon AU          |               |  Retailers:           |               |  Retailers:           |
-|  - JB Hi-Fi           |               |  - Amazon (US/UK/CA/DE|               |  - Sephora, Ulta      |
-|  - Harvey Norman      |               |  - Best Buy, Walmart  |               |  - Boots UK, Mecca AU |
-|  - The Good Guys      |               |  - Target, Currys     |               |  - Adore Beauty       |
+|  - JB Hi-Fi           |               |  - Amazon (US/UK/CA/DE|               |  - iHerb, Amazon, eBay|
+|  - Harvey Norman      |               |  - Best Buy, Walmart  |               |  - Sephora, Ulta      |
+|  - The Good Guys      |               |  - Target, Currys     |               |  - Boots UK, Mecca AU |
 +-----------+-----------+               +-----------+-----------+               +-----------+-----------+
             |                                       |                                       |
             +---------------------------------------+---------------------------------------+
@@ -54,53 +54,51 @@ The system architecture supports multi-tenant niche platforms sharing a unified 
                                                     v
 +---------------------------------------------------------------------------------------------------+
 |                              Smart Matcher & Multi-Offer Engine                                   |
-|  - Classifies into Smart Home Taxonomy or Beauty & Skincare Taxonomy                              |
-|  - Normalizes Brand, Volume/Size, Shade, GTIN/UPC/EAN                                             |
+|  - Classifies into Smart Home Taxonomy or Beauty & Skincare & Youth Supplement Taxonomy           |
+|  - Normalizes Brand, Volume/Count, Dosage, Shade, GTIN/UPC/EAN                                    |
 |  - Enforces Rule: Active Retailer Offers Count >= 3 per Region & Niche                            |
 +---------------------------------------------------+-----------------------------------------------+
                                                     |
                                                     v
 +---------------------------------------------------------------------------------------------------+
 |                                       Supabase DB                                                 |
-|  - canonical_products (Master Smart Home & Beauty Catalog with niche tags)                        |
-|  - marketplace_products (Scraped retailer listings with region & currency tags)                   |
+|  - canonical_products (Master Smart Home & Beauty/Supplement Catalog with niche tags)             |
+|  - marketplace_products (Scraped retailer listings from iHerb, Amazon, eBay, Sephora, etc.)       |
 |  - price_history (Automated price change snapshots via PostgreSQL trigger)                        |
 |  - v_au_smart_home_comparisons (View for nxtsmarthome.com.au: AU Smart Home & >= 3 offers)         |
 |  - v_intl_smart_home_comparisons (View for nxtsmart.homes: Intl Smart Home & >= 3 offers)         |
-|  - v_beauty_skincare_comparisons (View for www.bestlooking.skin: Beauty & >= 3 offers)             |
+|  - v_beauty_skincare_comparisons (View for www.bestlooking.skin: Beauty & Supplements >= 3 offers) |
 +---------------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-## 💄 Beauty & Skincare Category Taxonomy & Brands
+## 💄 Beauty, Skincare & Youth-Promoting Supplements Taxonomy
 
-### 1. Categories
+### 1. Skincare Categories
 - 🧴 **Cleansers & Toners**: Gel Cleansers, Cleansing Oils, Micellar Waters, Exfoliating Toners, Essences.
 - 💧 **Serums & Treatments**: Vitamin C, Retinol / Bakuchiol, Hyaluronic Acid, Niacinamide, AHA/BHA Acids, Eye Serums.
 - 🧴 **Moisturizers & Creams**: Night Creams, Gel Moisturizers, Barrier Repair Creams, Face Oils.
 - ☀️ **Sunscreen & Sun Care**: Mineral Sunscreens, Chemical Sunscreens, Tinted SPFs.
 - 🎭 **Face Masks & Peels**: Clay Masks, Sheet Masks, Overnight Masks, Chemical Peels.
-- 👁️ **Eye & Lip Care**: Eye Creams, Dark Circle Treatments, Lip Sleeping Masks, Lip Balms.
-- 💆 **Hair & Body Care**: Scalp Treatments, Hair Oils, Body Scrubs, Body Lotions.
 
-### 2. Top Brands
-The Ordinary, CeraVe, La Roche-Posay, Paula's Choice, Glow Recipe, SkinCeuticals, Drunk Elephant, Estée Lauder, Clinique, Laneige, COSRX, Supergoop!, Sunday Riley, Kiehl's, Tatcha, Youth to the People, Sol de Janeiro, Fenty Skin, Dyson Beauty, NARS, Charlotte Tilbury, Urban Decay, MAC, Olaplex, Dermalogica, Biossance, Murad.
+### 2. Youth-Promoting Skin Vitamins & Supplements Categories 💊
+- 🧬 **Collagen & Peptides**: Hydrolyzed Marine Collagen, Bovine Collagen Powder, Liquid Collagen Shots.
+- 💧 **Skin Hydration & Hyaluronic Acid**: Hyaluronic Acid Capsules, Phytoceramides for Skin Barrier.
+- 🛡️ **Cellular Anti-Aging & Longevity**: NMN (Nicotinamide Mononucleotide), Resveratrol, CoQ10, NAD+ Boosters.
+- ✨ **Skin Brightening & Antioxidants**: Glutathione, Vitamin C & E Complex, Alpha Lipoic Acid.
+- 💅 **Hair, Skin & Nails Vitamins**: High-Potency Biotin, Keratin, Zinc, Hair Growth Gummies.
+- 🐟 **Omega-3 & Essential Fatty Acids**: Wild Alaskan Salmon Oil, Evening Primrose Oil, Sea Buckthorn.
+
+### 3. Top Brands (Skincare & Supplements)
+- **Skincare Brands**: The Ordinary, CeraVe, La Roche-Posay, Paula's Choice, Glow Recipe, SkinCeuticals, Drunk Elephant, Estée Lauder, Clinique, Laneige, COSRX, Supergoop!, Sunday Riley, Kiehl's, Tatcha, Youth to the People, Sol de Janeiro, Fenty Skin, Dyson Beauty, NARS, Charlotte Tilbury, Urban Decay, MAC, Olaplex, Dermalogica.
+- **Supplement Brands**: Vital Proteins, iHerb Exclusives, Codeage, Sports Research, Solgar, Thorne, Garden of Life, NOW Foods, Reserveage Beauty, NeoCell, HUM Nutrition, OLLY, Life Extension, Nature's Bounty, Swisse, Blackmores.
 
 ---
 
 ## 🗄️ Database Schema & SQL Views
 
-### 1. Canonical Products Table (`canonical_products`)
-- `id` (UUID Primary Key)
-- `niche` (`'smart_home'`, `'beauty_skincare'`)
-- `title` (Master product name)
-- `brand` (e.g. *The Ordinary, CeraVe, La Roche-Posay, SkinCeuticals, Ring, Nest*)
-- `variant` (e.g. *30ml, 50ml, 100ml, Shade / Option*)
-- `gtin_upc_ean` (Universal product identifier)
-- `category` (Niche taxonomy)
-
-### 2. SQL View for `www.bestlooking.skin` (`v_beauty_skincare_comparisons`)
+### SQL View for `www.bestlooking.skin` (`v_beauty_skincare_comparisons`)
 ```sql
 CREATE OR REPLACE VIEW public.v_beauty_skincare_comparisons AS
 SELECT 
@@ -139,22 +137,20 @@ HAVING COUNT(mp.id) >= 3;
 
 ---
 
-## 🛡️ ZenRows Regional Presets for Beauty & Skincare Stores
+## 🛡️ ZenRows Regional Presets for Sourcing List (Including iHerb, Amazon, eBay)
 
-| Retailer / Store | Region | `proxy_country` | `js_render` | `antibot` | Target Site |
+| Retailer / Sourcing Store | Region | `proxy_country` | `js_render` | `antibot` | Target Site |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Sephora US** | US | `us` | `true` | `true` | `www.bestlooking.skin` |
+| **iHerb** | Global (US/EU/AU) | `us` | `true` | `true` | `www.bestlooking.skin` |
+| **Amazon (US, UK, CA, DE, AU)** | Global | `us` / `au` / `gb` | `true` | `true` | `www.bestlooking.skin` |
+| **eBay (US, UK, AU)** | Global | `us` / `au` / `gb` | `true` | `true` | `www.bestlooking.skin` |
+| **Sephora (US, CA, UK, EU, AU)** | Global | `us` / `au` / `gb` | `true` | `true` | `www.bestlooking.skin` |
 | **Ulta Beauty** | US | `us` | `true` | `true` | `www.bestlooking.skin` |
 | **Dermstore** | US | `us` | `true` | `true` | `www.bestlooking.skin` |
 | **Boots UK** | UK | `gb` | `true` | `true` | `www.bestlooking.skin` |
-| **Lookfantastic UK** | UK | `gb` | `true` | `true` | `www.bestlooking.skin` |
-| **Cult Beauty UK** | UK | `gb` | `true` | `true` | `www.bestlooking.skin` |
-| **Sephora CA** | CA | `ca` | `true` | `true` | `www.bestlooking.skin` |
-| **Shoppers Drug Mart** | CA | `ca` | `true` | `true` | `www.bestlooking.skin` |
-| **Mecca AU** | AU | `au` | `true` | `true` | `www.bestlooking.skin` |
+| **Mecca AU / NZ** | AU/NZ | `au` | `true` | `true` | `www.bestlooking.skin` |
 | **Adore Beauty AU** | AU | `au` | `true` | `true` | `www.bestlooking.skin` |
 | **Chemist Warehouse** | AU/NZ | `au` | `true` | `true` | `www.bestlooking.skin` |
-| **Sephora EU** | FR/DE | `fr` | `true` | `true` | `www.bestlooking.skin` |
 
 ---
 
@@ -165,16 +161,7 @@ HAVING COUNT(mp.id) >= 3;
 python main.py --site beauty --compare
 ```
 
-### 2. Discover & Index Skincare Products
+### 2. Discover & Index Skincare & Youth Supplements
 ```bash
 python main.py --site beauty --skincare
-```
-
-### 3. Smart Home Platforms
-```bash
-# Australian Smart Home site (nxtsmarthome.com.au)
-python main.py --site au --compare
-
-# International Smart Home site (nxtsmart.homes)
-python main.py --site intl --compare
 ```

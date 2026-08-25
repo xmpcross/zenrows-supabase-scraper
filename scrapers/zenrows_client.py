@@ -89,6 +89,12 @@ MARKETPLACE_PRESETS = {
         "premium_proxy": "true",
         "proxy_country": "us"
     },
+    "iherb": {
+        "js_render": "true",
+        "antibot": "true",
+        "premium_proxy": "true",
+        "proxy_country": "us"
+    },
 
     # UK Retailers (for nxtsmart.homes)
     "amazon_uk": {
