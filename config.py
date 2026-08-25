@@ -11,6 +11,8 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     DATAFORSEO_LOGIN = os.getenv("DATAFORSEO_LOGIN", "")
     DATAFORSEO_PASSWORD = os.getenv("DATAFORSEO_PASSWORD", "")
+    STRAPI_URL = os.getenv("STRAPI_URL", "https://cms.fxnstudio.com")
+    STRAPI_API_TOKEN = os.getenv("STRAPI_API_TOKEN", "")
 
     DEFAULT_JS_RENDER = os.getenv("DEFAULT_JS_RENDER", "false").lower() == "true"
     DEFAULT_PREMIUM_PROXY = os.getenv("DEFAULT_PREMIUM_PROXY", "false").lower() == "true"

@@ -253,3 +253,130 @@ class SupabaseManager:
         except Exception as e:
             logger.warning(f"Failed to log scrape run to Supabase: {e}")
 
+    # =========================================================================
+    # COUPONS & PROMO CODES HELPER METHODS
+    # =========================================================================
+
+    def upsert_coupon(self, coupon_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Upsert a store-wide promo coupon / discount code into 'coupons' table.
+        """
+        if not self.client:
+            logger.info(f"[Mock DB] Upserted Coupon: '{coupon_data.get('code')}' ({coupon_data.get('discount_description')}) for {coupon_data.get('marketplace')}")
+            return {"status": "mock_success", "data": coupon_data}
+
+        try:
+            res = self.client.table("coupons").upsert(coupon_data).execute()
+            logger.info(f"Upserted Supabase Coupon: [{coupon_data.get('marketplace').upper()}] '{coupon_data.get('code')}' -> {coupon_data.get('discount_description')}")
+            return {"status": "success", "data": res.data}
+        except Exception as e:
+            logger.error(f"Error upserting coupon to Supabase: {e}")
+            return {"status": "error", "error": str(e)}
+
+    def get_active_coupons(self, marketplace: Optional[str] = None, region: str = "US") -> List[Dict[str, Any]]:
+        """
+        Fetches active, verified coupons from Supabase for a specific store or region.
+        """
+        if not self.client:
+            return [
+                {
+                    "marketplace": marketplace or "amazon",
+                    "region": region,
+                    "code": "SAVE20",
+                    "discount_description": "20% Off Sitewide Flash Sale",
+                    "discount_type": "percentage",
+                    "discount_value": 20.0,
+                    "is_verified": True
+                }
+            ]
+
+        try:
+            query = self.client.table("coupons").select("*").eq("is_verified", True).eq("region", region.upper())
+            if marketplace:
+                query = query.eq("marketplace", marketplace.lower())
+            res = query.order("created_at", desc=True).execute()
+            return res.data or []
+        except Exception as e:
+            logger.error(f"Error fetching active coupons from Supabase: {e}")
+            return []
+
+    # =========================================================================
+    # WATERFALL MATCHING HELPER METHODS
+    # =========================================================================
+
+    def find_canonical_by_gtin(self, gtin: str) -> Optional[Dict[str, Any]]:
+        """Tier 1 Match: Search canonical_products by GTIN/UPC/EAN."""
+        if not self.client or not gtin:
+            return None
+        try:
+            res = self.client.table("canonical_products").select("*").eq("gtin_upc_ean", gtin.strip()).limit(1).execute()
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.error(f"Error querying GTIN match '{gtin}': {e}")
+            return None
+
+    def find_canonical_by_asin(self, asin: str) -> Optional[Dict[str, Any]]:
+        """Tier 2 Match: Search canonical_products by Amazon ASIN."""
+        if not self.client or not asin:
+            return None
+        try:
+            res = self.client.table("canonical_products").select("*").eq("asin", asin.strip()).limit(1).execute()
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.error(f"Error querying ASIN match '{asin}': {e}")
+            return None
+
+    def find_canonical_by_brand_mpn(self, brand: str, mpn: str) -> Optional[Dict[str, Any]]:
+        """Tier 3 Match: Search canonical_products by Brand + MPN."""
+        if not self.client or not brand or not mpn:
+            return None
+        try:
+            res = self.client.table("canonical_products").select("*") \
+                .ilike("brand", brand.strip()) \
+                .ilike("mpn", mpn.strip()) \
+                .limit(1).execute()
+            return res.data[0] if res.data else None
+        except Exception as e:
+            logger.error(f"Error querying Brand+MPN match '{brand} / {mpn}': {e}")
+            return None
+
+    def find_canonical_by_trigram(self, normalized_title: str, brand: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Tier 4 Match: Fetch candidate canonical products by brand or similarity for trigram matching."""
+        if not self.client or not normalized_title:
+            return []
+        try:
+            query = self.client.table("canonical_products").select("*")
+            if brand:
+                query = query.ilike("brand", brand.strip())
+            res = query.limit(20).execute()
+            return res.data or []
+        except Exception as e:
+            logger.error(f"Error querying trigram candidate titles: {e}")
+            return []
+
+    def insert_unmatched_queue(
+        self,
+        raw_offer: Dict[str, Any],
+        suggested_canonical_id: Optional[str] = None,
+        similarity_score: float = 0.0
+    ) -> Dict[str, Any]:
+        """Routes 65% - 84% gray-area matches to unmatched_queue for manual human review."""
+        if not self.client:
+            logger.info(f"[Mock DB] Queued gray-area match ({similarity_score*100:.1f}%) for: {raw_offer.get('title')}")
+            return {"status": "mock_queued"}
+
+        try:
+            payload = {
+                "raw_offer": raw_offer,
+                "suggested_canonical_id": suggested_canonical_id,
+                "similarity_score": round(similarity_score * 100, 2),
+                "status": "pending"
+            }
+            res = self.client.table("unmatched_queue").insert(payload).execute()
+            logger.info(f"Queued gray-area match ({similarity_score*100:.1f}%) for review: '{raw_offer.get('title')}'")
+            return {"status": "success", "data": res.data}
+        except Exception as e:
+            logger.error(f"Error queuing offer to unmatched_queue: {e}")
+            return {"status": "error", "error": str(e)}
+
+

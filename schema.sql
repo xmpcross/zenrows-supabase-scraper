@@ -7,8 +7,9 @@
 -- 3. www.bestlooking.skin (International Beauty & Skincare)
 -- ===================================================
 
--- Enable UUID extension
+-- Enable UUID & Trigram extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- 1. Categories Table
 CREATE TABLE IF NOT EXISTS public.categories (
@@ -45,6 +46,9 @@ CREATE TABLE IF NOT EXISTS public.canonical_products (
     title TEXT NOT NULL,
     brand TEXT,
     model TEXT,
+    mpn TEXT,                                          -- Manufacturer Part Number
+    asin TEXT,                                         -- Amazon Standard Identification Number
+    normalized_title TEXT,                             -- Lowercased, stripped title for trigram matching
     variant TEXT,                                      -- e.g. "50ml", "Shade 02", "Pack of 2"
     gtin_upc_ean TEXT UNIQUE,
     category TEXT NOT NULL DEFAULT 'General',
@@ -59,6 +63,22 @@ CREATE TABLE IF NOT EXISTS public.canonical_products (
 CREATE INDEX IF NOT EXISTS idx_canonical_niche ON public.canonical_products(niche);
 CREATE INDEX IF NOT EXISTS idx_canonical_brand ON public.canonical_products(brand);
 CREATE INDEX IF NOT EXISTS idx_canonical_category ON public.canonical_products(category);
+CREATE INDEX IF NOT EXISTS idx_canonical_gtin ON public.canonical_products(gtin_upc_ean) WHERE gtin_upc_ean IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_canonical_asin ON public.canonical_products(asin) WHERE asin IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_canonical_brand_mpn ON public.canonical_products(UPPER(brand), UPPER(mpn)) WHERE brand IS NOT NULL AND mpn IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_canonical_trgm_title ON public.canonical_products USING gin (normalized_title gin_trgm_ops);
+
+-- 2b. Human-in-the-Loop Review Queue for Gray-Area Waterfall Matches (65% - 84% Similarity)
+CREATE TABLE IF NOT EXISTS public.unmatched_queue (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    raw_offer JSONB NOT NULL,
+    suggested_canonical_id UUID REFERENCES public.canonical_products(id) ON DELETE SET NULL,
+    similarity_score NUMERIC(5, 2),
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'merged', 'rejected'
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_unmatched_queue_status ON public.unmatched_queue(status);
 
 -- 3. Marketplace Products / Retailer Offers Table
 CREATE TABLE IF NOT EXISTS public.marketplace_products (
@@ -110,6 +130,26 @@ CREATE TABLE IF NOT EXISTS public.price_history (
 
 CREATE INDEX IF NOT EXISTS idx_price_history_listing ON public.price_history(listing_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_recorded_at ON public.price_history(recorded_at DESC);
+
+-- 4b. Standalone Store Coupons & Promo Codes Table (Supabase Persistence)
+CREATE TABLE IF NOT EXISTS public.coupons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    marketplace VARCHAR(50) NOT NULL,        -- 'amazon', 'sephora', 'bestbuy', 'iherb', etc.
+    region VARCHAR(10) NOT NULL DEFAULT 'US', -- 'US', 'AU', 'UK', 'CA', 'EU'
+    code TEXT,                                -- Promo Code (e.g. 'SAVE20')
+    discount_description TEXT NOT NULL,       -- e.g. '20% Off Sitewide' or '$15 off orders over $75'
+    discount_type VARCHAR(20) DEFAULT 'percentage', -- 'percentage', 'fixed', 'free_shipping'
+    discount_value NUMERIC(10, 2),
+    min_spend NUMERIC(10, 2),
+    affiliate_url TEXT,
+    is_verified BOOLEAN DEFAULT true,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_coupons_marketplace ON public.coupons(marketplace);
+CREATE INDEX IF NOT EXISTS idx_coupons_region ON public.coupons(region);
 
 -- 5. Scrape Run Logs Table
 CREATE TABLE IF NOT EXISTS public.scrape_logs (

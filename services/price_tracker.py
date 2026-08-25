@@ -4,13 +4,20 @@ from typing import Dict, Any, List, Optional
 from db.supabase_client import SupabaseManager
 from scrapers.zenrows_client import ZenRowsFetcher
 from scrapers.marketplace_scrapers import parse_marketplace_page
+from services.waterfall_matcher import WaterfallMatcher, calculate_trigram_similarity
 
 logger = logging.getLogger(__name__)
 
 class PriceTrackerEngine:
-    def __init__(self, supabase: Optional[SupabaseManager] = None, fetcher: Optional[ZenRowsFetcher] = None):
+    def __init__(
+        self,
+        supabase: Optional[SupabaseManager] = None,
+        fetcher: Optional[ZenRowsFetcher] = None,
+        matcher: Optional[WaterfallMatcher] = None
+    ):
         self.supabase = supabase or SupabaseManager()
         self.fetcher = fetcher or ZenRowsFetcher()
+        self.matcher = matcher or WaterfallMatcher(supabase=self.supabase)
 
     def refresh_product_price(self, product: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -74,6 +81,32 @@ class PriceTrackerEngine:
         t = re.sub(r"[^\w\s]", "", t)
         words = [w for w in t.split() if len(w) > 2 and w not in ["the", "and", "for", "with", "new"]]
         return " ".join(sorted(words[:6]))
+
+    def process_incoming_offer(
+        self,
+        raw_offer: Dict[str, Any],
+        local_catalog: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Runs incoming scraped offer through WaterfallMatcher (GTIN -> ASIN -> Brand+MPN -> Trigram),
+        links canonical_product_id, and upserts into marketplace_products table.
+        """
+        match_result = self.matcher.match_offer(raw_offer, local_catalog=local_catalog)
+        canonical_id = match_result.get("canonical_product_id")
+
+        raw_offer["canonical_product_id"] = canonical_id
+
+        if self.supabase.is_connected():
+            upsert_res = self.supabase.upsert_marketplace_product(raw_offer)
+            return {
+                "match": match_result,
+                "upsert": upsert_res
+            }
+
+        return {
+            "match": match_result,
+            "offer": raw_offer
+        }
 
     def auto_create_comparison_groups(self) -> int:
         """

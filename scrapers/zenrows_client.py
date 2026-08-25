@@ -153,6 +153,10 @@ class ZenRowsFetcher:
             self.client = None
             logger.warning("ZenRows API Key missing or default. Direct HTTP requests will be used as fallback.")
 
+    @property
+    def is_configured(self) -> bool:
+        return self.client is not None
+
     def fetch_html(
         self,
         url: str,
