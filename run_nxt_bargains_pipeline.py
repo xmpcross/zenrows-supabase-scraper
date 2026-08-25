@@ -104,10 +104,18 @@ def run_nxt_bargains_pipeline():
     deals_summary = deals_engine.run_daily_deal_ingestion(local_catalog=local_catalog)
     logger.info(f"Phase 2 Complete: Ingested {deals_summary['total_extracted']} deals from ZenRows deal pages.")
 
+    # PHASE 3: Top Best Sellers Ingestion & Ranking Update
+    logger.info("\n--- PHASE 3: Top Best Sellers Ingestion & Category Ranking Update ---")
+    from scrapers.best_sellers_engine import BestSellersEngine
+    best_sellers_engine = BestSellersEngine(supabase=supabase, dataforseo=dfs_fetcher, matcher=matcher, rewriter=rewriter)
+    best_sellers_summary = best_sellers_engine.fetch_and_ingest_best_sellers(niche="smart_home", region="US", limit_per_category=3)
+    logger.info(f"Phase 3 Complete: Ingested {best_sellers_summary['total_extracted']} Best Sellers across top categories.")
+
     logger.info("\n=========================================================================")
     logger.info("  NXT.BARGAINS PIPELINE EXECUTION SUCCESSFUL!")
     logger.info(f"  • DataForSEO Offers Processed: {dfs_extracted_count}")
     logger.info(f"  • ZenRows Deal Offers Ingested: {deals_summary['total_extracted']}")
+    logger.info(f"  • Best Sellers Ingested: {best_sellers_summary['total_extracted']}")
     logger.info("=========================================================================")
 
 if __name__ == "__main__":
