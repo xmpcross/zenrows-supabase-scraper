@@ -36,3 +36,6 @@ EXIT_CODE=$?
 TIMESTAMP_END=$(date "+%Y-%m-%d %H:%M:%S")
 echo "[$TIMESTAMP_END] Pipeline Run Finished with Exit Code $EXIT_CODE" >> "$SCRIPT_DIR/logs/cron.log"
 echo "" >> "$SCRIPT_DIR/logs/cron.log"
+
+# Propagate the pipeline result so Cronmanager can record and alert on failures.
+exit "$EXIT_CODE"

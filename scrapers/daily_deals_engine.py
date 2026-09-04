@@ -15,6 +15,7 @@ from scrapers.zenrows_client import ZenRowsFetcher
 from scrapers.marketplace_scrapers import parse_marketplace_page, clean_price, clean_text, extract_brand
 from services.price_tracker import PriceTrackerEngine
 from db.supabase_client import SupabaseManager
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ TARGET_DEAL_PAGES = {
         "niche": "beauty_skincare"
     },
     "target": {
-        "url": "https://www.target.com/c/top-deals/-/N-4xubz",
+        "url": "https://www.target.com/c/electronics/-/N-5xtg6",
         "region": "US",
         "marketplace": "target",
         "proxy_country": "us",
@@ -146,9 +147,11 @@ class DailyDealsIngestionEngine:
                         }
                     )
                     extracted_offers = parse_marketplace_page(html, config["url"], config["marketplace"])
-                else:
-                    logger.info(f"[Mock Daily Deals] Generating simulated deals for target key '{key}'.")
+                elif Config.ALLOW_DEMO_DATA:
+                    logger.warning(f"[Demo Daily Deals] Generating fixtures for target key '{key}'.")
                     extracted_offers = self._generate_mock_daily_deals(key, config)
+                else:
+                    raise RuntimeError("ZenRows is not configured; live ingestion refuses to generate demo offers")
 
                 logger.info(f"Extracted {len(extracted_offers)} live deal offers from {key.upper()}.")
 

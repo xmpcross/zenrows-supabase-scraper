@@ -156,7 +156,7 @@ class SmartHomeMatcherEngine:
         self,
         canonical_product: Dict[str, Any],
         region: str = "AU",
-        provider: str = "auto"
+        provider: str = "hybrid"
     ) -> List[Dict[str, Any]]:
         """
         Searches target regional stores via DataForSEO or ZenRows to find competing offers
@@ -174,7 +174,7 @@ class SmartHomeMatcherEngine:
         collected_offers = []
 
         # Use DataForSEO as primary when configured or requested
-        if provider in ["dataforseo", "auto"] and self.dataforseo.is_configured:
+        if provider in ["dataforseo", "hybrid"] and self.dataforseo.is_configured:
             collected_offers = self.dataforseo.search_google_shopping_offers(
                 keyword=search_query,
                 region=region,
@@ -182,7 +182,7 @@ class SmartHomeMatcherEngine:
             )
 
         # Fallback to ZenRows direct web scraper if DataForSEO produced < 3 offers
-        if len(collected_offers) < 3 or provider == "zenrows":
+        if provider in ["zenrows", "hybrid"] and (provider == "zenrows" or len(collected_offers) < 3):
             if region == "AU":
                 sources = [
                     ("amazon_au", f"https://www.amazon.com.au/s?k={search_query_clean}"),

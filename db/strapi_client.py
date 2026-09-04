@@ -1,7 +1,6 @@
 """
 Strapi CMS REST API Client for nxt.bargains.
-Provides database adapter methods compatible with SupabaseManager interface,
-supporting Waterfall Product Matching, Offer Ingestion, and AI Content Synchronization.
+Legacy read adapter used only by the one-time Strapi-to-Supabase migration.
 """
 
 import os
@@ -14,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 class StrapiManager:
     def __init__(self, url: Optional[str] = None, token: Optional[str] = None):
-        self.url = (url or Config.STRAPI_URL or os.getenv("STRAPI_URL", "https://cms.fxnstudio.com")).rstrip("/")
-        self.token = token or Config.STRAPI_API_TOKEN or os.getenv("STRAPI_API_TOKEN", "")
+        self.url = (url or Config.LEGACY_STRAPI_URL).rstrip("/")
+        self.token = token or Config.LEGACY_STRAPI_API_TOKEN
         self.is_configured = bool(self.token and self.token != "your_strapi_api_token_here")
 
         if self.is_configured:
@@ -162,6 +161,7 @@ class StrapiManager:
         """
         Creates or updates master canonical product entry in Strapi CMS.
         """
+        raise RuntimeError("Strapi product writes are disabled; use SupabaseManager")
         if not self.is_configured:
             mock_id = f"strapi-canonical-{hash(canonical_data.get('title')) & 0xffffffff:x}"
             logger.info(f"[Mock Strapi] Created Canonical Product: '{canonical_data.get('title')}' -> ID: {mock_id}")
@@ -191,6 +191,7 @@ class StrapiManager:
         """
         Upserts retailer offer listing into Strapi CMS under 'offers' content-type.
         """
+        raise RuntimeError("Strapi offer writes are disabled; use SupabaseManager")
         if not self.is_configured:
             logger.info(f"[Mock Strapi] Upserted Offer: '{offer_data.get('title')}' (${offer_data.get('current_price')}) -> Canonical ID: {offer_data.get('canonical_product_id')}")
             return {"status": "mock_success", "data": offer_data}
@@ -238,6 +239,7 @@ class StrapiManager:
         """
         Routes gray-area candidate matches (65% - 84% score) to Strapi 'unmatched-queues' content-type for manual review.
         """
+        raise RuntimeError("Strapi review-queue writes are disabled; use SupabaseManager")
         if not self.is_configured:
             logger.info(f"[Mock Strapi Queue] Queued gray-area match ({similarity_score*100:.1f}%) for: '{raw_offer.get('title')}'")
             return {"status": "mock_queued"}

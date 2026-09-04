@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS public.categories (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Migration support for pre-existing categories table
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS niche TEXT NOT NULL DEFAULT 'smart_home';
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.categories(id) ON DELETE SET NULL;
+
 -- Seed Smart Home Categories
 INSERT INTO public.categories (name, slug, niche) VALUES
 ('Smart Security & Access', 'smart-security', 'smart_home'),
@@ -59,6 +63,11 @@ CREATE TABLE IF NOT EXISTS public.canonical_products (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Stable public URL identifier for the frontend. Nullable supports existing databases
+-- while migration/backfill is in progress.
+ALTER TABLE public.canonical_products ADD COLUMN IF NOT EXISTS slug TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_canonical_slug ON public.canonical_products(slug) WHERE slug IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_canonical_niche ON public.canonical_products(niche);
 CREATE INDEX IF NOT EXISTS idx_canonical_brand ON public.canonical_products(brand);
@@ -110,6 +119,18 @@ CREATE TABLE IF NOT EXISTS public.marketplace_products (
     scraped_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration support for pre-existing marketplace_products table
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS canonical_product_id UUID REFERENCES public.canonical_products(id) ON DELETE SET NULL;
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS niche VARCHAR(50) NOT NULL DEFAULT 'smart_home';
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS region VARCHAR(10) NOT NULL DEFAULT 'AU';
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS seller_name TEXT;
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS coupon_text TEXT;
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS coupon_code TEXT;
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS short_description TEXT;
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.marketplace_products ADD COLUMN IF NOT EXISTS images TEXT[];
+
 
 CREATE INDEX IF NOT EXISTS idx_mkp_products_canonical ON public.marketplace_products(canonical_product_id);
 CREATE INDEX IF NOT EXISTS idx_mkp_products_region ON public.marketplace_products(region);
@@ -191,7 +212,8 @@ EXECUTE FUNCTION public.fn_log_price_history();
 -- 7. Views for 3+ Offers Rule Enforcement Across Sites
 
 -- View for nxtsmarthome.com.au (AU Smart Home Site)
-CREATE OR REPLACE VIEW public.v_au_smart_home_comparisons AS
+CREATE OR REPLACE VIEW public.v_au_smart_home_comparisons
+WITH (security_invoker = true) AS
 SELECT 
     cp.id AS canonical_product_id,
     cp.title AS canonical_title,
@@ -224,7 +246,8 @@ GROUP BY cp.id, cp.title, cp.brand, cp.model, cp.category, cp.image_url
 HAVING COUNT(mp.id) >= 3;
 
 -- View for nxtsmart.homes (International Smart Home Site)
-CREATE OR REPLACE VIEW public.v_intl_smart_home_comparisons AS
+CREATE OR REPLACE VIEW public.v_intl_smart_home_comparisons
+WITH (security_invoker = true) AS
 SELECT 
     cp.id AS canonical_product_id,
     cp.title AS canonical_title,
@@ -258,7 +281,8 @@ GROUP BY cp.id, cp.title, cp.brand, cp.model, cp.category, cp.image_url
 HAVING COUNT(mp.id) >= 3;
 
 -- View for www.bestlooking.skin (International Beauty & Skincare Site)
-CREATE OR REPLACE VIEW public.v_beauty_skincare_comparisons AS
+CREATE OR REPLACE VIEW public.v_beauty_skincare_comparisons
+WITH (security_invoker = true) AS
 SELECT 
     cp.id AS canonical_product_id,
     cp.title AS canonical_title,
@@ -294,6 +318,55 @@ WHERE cp.niche = 'beauty_skincare'
 GROUP BY cp.id, cp.title, cp.brand, cp.variant, cp.category, cp.image_url
 HAVING COUNT(mp.id) >= 3;
 
+-- Supabase-only commerce read model for nxt.bargains. Editorial posts remain
+-- in Strapi, but products, offers and price history are served from here.
+CREATE OR REPLACE VIEW public.v_nxt_bargains_comparisons
+WITH (security_invoker = true) AS
+SELECT
+    cp.id AS canonical_product_id,
+    cp.title AS canonical_title,
+    cp.brand,
+    cp.model,
+    cp.mpn,
+    cp.asin,
+    cp.gtin_upc_ean,
+    cp.category,
+    cp.image_url AS canonical_image,
+    cp.description,
+    cp.specifications,
+    cp.updated_at,
+    COUNT(DISTINCT mp.marketplace) AS active_offers_count,
+    MIN(mp.current_price) AS lowest_price,
+    MAX(mp.current_price) AS highest_price,
+    jsonb_agg(
+        jsonb_build_object(
+            'offer_id', mp.id,
+            'marketplace', mp.marketplace,
+            'seller_name', mp.seller_name,
+            'region', mp.region,
+            'price', mp.current_price,
+            'original_price', mp.original_price,
+            'discount_percent', mp.discount_percent,
+            'currency', mp.currency,
+            'coupon_code', mp.coupon_code,
+            'product_url', mp.product_url,
+            'image_url', mp.image_url,
+            'rating', mp.rating,
+            'review_count', mp.review_count,
+            'is_available', mp.is_available,
+            'scraped_at', mp.scraped_at,
+            'provider', COALESCE(mp.metadata->>'provider', 'unknown')
+        ) ORDER BY mp.current_price ASC NULLS LAST
+    ) AS offers,
+    cp.slug
+FROM public.canonical_products cp
+JOIN public.marketplace_products mp ON cp.id = mp.canonical_product_id
+WHERE cp.is_active = true
+  AND mp.is_available = true
+  AND mp.current_price IS NOT NULL
+GROUP BY cp.id
+HAVING COUNT(mp.id) >= 1;
+
 -- Row Level Security (RLS) policies
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.canonical_products ENABLE ROW LEVEL SECURITY;
@@ -302,16 +375,22 @@ ALTER TABLE public.price_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scrape_logs ENABLE ROW LEVEL SECURITY;
 
 -- Allow public read access
+DROP POLICY IF EXISTS "Allow public read categories" ON public.categories;
+DROP POLICY IF EXISTS "Allow public read canonical_products" ON public.canonical_products;
+DROP POLICY IF EXISTS "Allow public read marketplace_products" ON public.marketplace_products;
+DROP POLICY IF EXISTS "Allow public read price_history" ON public.price_history;
 CREATE POLICY "Allow public read categories" ON public.categories FOR SELECT USING (true);
 CREATE POLICY "Allow public read canonical_products" ON public.canonical_products FOR SELECT USING (true);
 CREATE POLICY "Allow public read marketplace_products" ON public.marketplace_products FOR SELECT USING (true);
 CREATE POLICY "Allow public read price_history" ON public.price_history FOR SELECT USING (true);
 
 -- Allow full write access for scraper service
-CREATE POLICY "Allow write categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow write canonical_products" ON public.canonical_products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow write marketplace_products" ON public.marketplace_products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow write price_history" ON public.price_history FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow write scrape_logs" ON public.scrape_logs FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow write categories" ON public.categories;
+DROP POLICY IF EXISTS "Allow write canonical_products" ON public.canonical_products;
+DROP POLICY IF EXISTS "Allow write marketplace_products" ON public.marketplace_products;
+DROP POLICY IF EXISTS "Allow write price_history" ON public.price_history;
+DROP POLICY IF EXISTS "Allow write scrape_logs" ON public.scrape_logs;
 
-
+-- The scraper uses the service-role key, which bypasses RLS. Anonymous clients
+-- retain SELECT access but cannot modify commerce data.
+GRANT SELECT ON public.v_nxt_bargains_comparisons TO anon, authenticated;

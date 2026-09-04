@@ -1,5 +1,27 @@
 # 🛒 ZenRows + DataForSEO + Supabase Multi-Niche Price Comparison Engine
 
+## NXT.Bargains persistence contract
+
+Supabase is the only production database for canonical products, offers, price
+history, and the matching review queue. Strapi is retained only as a read-only
+legacy source during migration; production jobs never write product data to it.
+
+- `dataforseo`: broad shopping-result discovery for supplied product keywords.
+- `zenrows`: direct retailer/category/deal-page extraction when page-level data is needed.
+- `hybrid`: starts with DataForSEO and uses ZenRows when fewer than three useful offers are found.
+- Every provider result passes through the same matcher and Supabase persistence layer.
+- `v_nxt_bargains_comparisons` exposes only active products with offers from at
+  least three distinct marketplaces, so incomplete comparisons stay unpublished.
+
+Run a provider job with `python run_nxt_bargains_pipeline.py --provider hybrid
+--keyword "PRODUCT NAME"`. Demo records are disabled unless
+`ALLOW_DEMO_DATA=true` is explicitly set in a non-production environment.
+
+For the one-time legacy import, first run
+`python scripts/migrate_strapi_to_supabase.py` for a read-only inventory. After
+reviewing the counts and applying `schema.sql`, rerun with `--apply`. The apply
+flag is intentionally required so an ordinary command cannot mutate Supabase.
+
 Powers three specialized price comparison platforms:
 1. 🇦🇺 **`nxtsmarthome.com.au`**: Australian market (fetching strictly from Australian stores: Amazon AU, JB Hi-Fi, Harvey Norman, The Good Guys, eBay AU, Bunnings).
 2. 🌐 **`nxtsmart.homes`**: International market (fetching from US, UK, Canada, and Europe: Amazon US/UK/CA/DE, Best Buy, Walmart, Target, Currys).
@@ -176,4 +198,3 @@ python main.py --site intl --compare
 - Real API keys belong **only** in `.env`.
 - `.env` is listed in `.gitignore` to prevent accidental pushes to public repositories.
 - Use `.env.example` as a template when deploying to production environments.
-

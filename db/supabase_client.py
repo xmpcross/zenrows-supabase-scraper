@@ -40,8 +40,11 @@ class SupabaseManager:
             raw_cat = product_data.get("category", "")
             product_data["category"] = classify_product_category(title, raw_cat)
 
+            # Strip transient/non-column keys before sending to Supabase
+            payload = {k: v for k, v in product_data.items() if k not in ["target_canonical", "target_canonical_id"]}
+
             response = self.client.table("marketplace_products").upsert(
-                product_data, on_conflict="product_url"
+                payload, on_conflict="product_url"
             ).execute()
             logger.info(f"Upserted {product_data.get('marketplace', '').upper()} product: '{product_data.get('title')}' -> [{product_data['category']}]")
             return {"status": "success", "data": response.data}
@@ -156,7 +159,8 @@ class SupabaseManager:
             return {"status": "skipped", "id": "mock-canonical-id"}
 
         try:
-            res = self.client.table("canonical_products").upsert(canonical_data).execute()
+            payload = {k: v for k, v in canonical_data.items() if k not in ["target_canonical", "target_canonical_id"]}
+            res = self.client.table("canonical_products").upsert(payload).execute()
             logger.info(f"Upserted Canonical Product: '{canonical_data.get('title')}'")
             return {"status": "success", "data": res.data[0] if res.data else {}}
         except Exception as e:

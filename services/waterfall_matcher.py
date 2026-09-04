@@ -32,6 +32,10 @@ def normalize_title(title: str) -> str:
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
+def slugify_title(title: str) -> str:
+    """Create a stable, URL-safe identifier for a canonical product."""
+    return re.sub(r"(^-+|-+$)", "", re.sub(r"[^a-z0-9]+", "-", title.lower()))
+
 def generate_trigrams(text: str) -> set:
     """
     Generates 3-character (trigram) substrings from normalized text,
@@ -170,6 +174,44 @@ class WaterfallMatcher:
                 }
 
         # ---------------------------------------------------------------------
+        # TIER 3.5: Targeted Canonical Search Match (Targeted Search Intent)
+        # ---------------------------------------------------------------------
+        target_cand = raw_offer.get("target_canonical")
+        target_cid = raw_offer.get("target_canonical_id") or (target_cand.get("id") if target_cand else None)
+        if target_cid:
+            if not target_cand and self.supabase.is_connected():
+                try:
+                    t_res = self.supabase.client.table("canonical_products").select("*").eq("id", target_cid).execute()
+                    if t_res.data:
+                        target_cand = t_res.data[0]
+                except Exception as e:
+                    logger.debug(f"Could not fetch target canonical {target_cid}: {e}")
+            if target_cand:
+                t_score = calculate_trigram_similarity(title, target_cand.get("title", ""))
+                cand_brand = target_cand.get("brand", "")
+                brand_compat = True
+                if brand and cand_brand and brand.lower() not in cand_brand.lower() and cand_brand.lower() not in brand.lower():
+                    brand_compat = False
+                
+                # Check word overlap between normalized titles
+                t1_words = set(normalize_title(title).split())
+                t2_words = set(normalize_title(target_cand.get("title", "")).split())
+                w1 = {w for w in t1_words if len(w) > 2 and w not in ["for", "with", "the", "and", "set", "pack"]}
+                w2 = {w for w in t2_words if len(w) > 2 and w not in ["for", "with", "the", "and", "set", "pack"]}
+                overlap = w1.intersection(w2)
+                overlap_ratio = len(overlap) / float(len(w1)) if w1 else 0.0
+
+                if brand_compat and (t_score >= 0.30 or overlap_ratio >= 0.50 or len(overlap) >= 2):
+                    logger.info(f"   ► TARGETED SEARCH MATCH (Score: {t_score*100:.1f}%, Overlap: {len(overlap)} words) -> Canonical ID: {target_cand.get('id')}")
+                    return {
+                        "canonical_product_id": target_cand.get("id"),
+                        "match_tier": "targeted_search_match",
+                        "confidence_score": round(max(t_score, overlap_ratio), 4),
+                        "canonical": target_cand,
+                        "details": f"Targeted search match: trigram {t_score*100:.1f}%, word overlap {len(overlap)} words"
+                    }
+
+        # ---------------------------------------------------------------------
         # TIER 4: Trigram Fuzzy Title & Brand Match
         # ---------------------------------------------------------------------
         candidates = []
@@ -232,6 +274,7 @@ class WaterfallMatcher:
         new_canonical_payload = {
             "niche": niche,
             "title": title,
+            "slug": slugify_title(title),
             "brand": brand,
             "model": mpn or raw_offer.get("model"),
             "mpn": mpn,

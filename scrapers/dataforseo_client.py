@@ -1,4 +1,6 @@
 import os
+import time
+import base64
 import requests
 import logging
 from typing import List, Dict, Any, Optional
@@ -30,14 +32,30 @@ class DataForSEOFetcher:
         self.is_configured = bool(self.login and self.password and self.login != "your_dataforseo_login_email")
 
         if self.is_configured:
+            pw = self.password.strip()
+            # If pw is already base64 encoded string (e.g. starting with 'a3Jpd...'), use directly
+            try:
+                decoded = base64.b64decode(pw).decode("utf-8")
+                if ":" in decoded:
+                    self.auth_header = f"Basic {pw}"
+                else:
+                    raw_pair = f"{self.login}:{pw}"
+                    self.auth_header = f"Basic {base64.b64encode(raw_pair.encode()).decode()}"
+            except Exception:
+                if ":" in pw:
+                    self.auth_header = f"Basic {base64.b64encode(pw.encode()).decode()}"
+                else:
+                    raw_pair = f"{self.login}:{pw}"
+                    self.auth_header = f"Basic {base64.b64encode(raw_pair.encode()).decode()}"
             logger.info("DataForSEO Fetcher initialized with active credentials.")
         else:
-            logger.info("DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD not configured. Operating in fallback / demo mode.")
+            self.auth_header = ""
+            logger.info("DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD not configured. Live calls are disabled.")
 
     def search_google_shopping_offers(
         self,
         keyword: str,
-        region: str = "AU",
+        region: str = "US",
         category: str = "General",
         limit: int = 10
     ) -> List[Dict[str, Any]]:
@@ -46,55 +64,99 @@ class DataForSEOFetcher:
         multi-retailer offers for a specific keyword in a target region.
         """
         if not self.is_configured:
-            logger.info(f"[DataForSEO Fallback] Returning simulated multi-offer response for '{keyword}' ({region}).")
-            return self._mock_offers_fallback(keyword, region, category)
+            logger.error("DataForSEO credentials are not configured; refusing to search offers.")
+            return []
 
         location_code = LOCATION_CODES.get(region.upper(), 2840)
-        endpoint = f"{self.BASE_URL}/products/live"
+        post_endpoint = f"{self.BASE_URL}/products/task_post"
 
         payload = [{
             "keyword": keyword,
             "location_code": location_code,
             "language_code": "en",
-            "depth": limit
+            "depth": limit,
+            "priority": 2
         }]
 
+        headers = {
+            "Authorization": self.auth_header,
+            "Content-Type": "application/json"
+        }
+
         try:
-            logger.info(f"Posting DataForSEO Shopping Search: '{keyword}' (Region: {region}, LocCode: {location_code})")
+            logger.info(f"Posting DataForSEO Shopping Task: '{keyword}' (Region: {region}, LocCode: {location_code})")
             res = requests.post(
-                endpoint,
-                auth=(self.login, self.password),
+                post_endpoint,
+                headers=headers,
                 json=payload,
-                headers={"Content-Type": "application/json"},
                 timeout=30
             )
 
             if res.status_code != 200:
                 logger.error(f"DataForSEO API error HTTP {res.status_code}: {res.text}")
-                return self._mock_offers_fallback(keyword, region, category)
+                return []
 
             data = res.json()
             tasks = data.get("tasks", [])
-            if not tasks or not tasks[0].get("result"):
-                logger.warning(f"No DataForSEO results found for keyword '{keyword}'.")
+            if not tasks or not tasks[0].get("id"):
+                logger.warning(f"Failed to create DataForSEO task for keyword '{keyword}'.")
                 return []
 
-            items = tasks[0]["result"][0].get("items", [])
+            task_id = tasks[0]["id"]
+            get_endpoint = f"{self.BASE_URL}/products/task_get/advanced/{task_id}"
+
+            items = []
+            for attempt in range(8):
+                time.sleep(2)
+                get_res = requests.get(get_endpoint, headers=headers, timeout=30)
+                if get_res.status_code != 200:
+                    continue
+                get_data = get_res.json()
+                task_results = get_data.get("tasks", [{}])[0].get("result")
+                if task_results and len(task_results) > 0 and task_results[0] and task_results[0].get("items"):
+                    items = task_results[0]["items"]
+                    break
+
+            if not items:
+                logger.warning(f"DataForSEO task {task_id} returned no items for keyword '{keyword}'.")
+                return []
+
             extracted_offers = []
             rank = 1
 
             for item in items:
                 title = item.get("title")
                 price = item.get("price")
-                seller = item.get("seller_name") or item.get("domain") or "Marketplace Store"
+                seller = item.get("seller") or item.get("seller_name") or item.get("domain") or "Marketplace Store"
                 product_url = item.get("url") or item.get("shopping_url")
-                image_url = item.get("image_url")
-                rating = item.get("rating", {}).get("value") if isinstance(item.get("rating"), dict) else None
+                image_url = item.get("image_url") or (item.get("product_images") or [None])[0]
+                rating = item.get("rating", {}).get("value") if isinstance(item.get("rating"), dict) else (item.get("product_rating", {}).get("value") if isinstance(item.get("product_rating"), dict) else None)
 
                 if not title or not price or not product_url:
                     continue
 
-                mkp_tag = seller.lower().replace(" ", "_").replace(".", "_")
+                raw_seller = seller.lower().strip()
+                if "best buy" in raw_seller or "bestbuy" in raw_seller:
+                    mkp_tag = "bestbuy"
+                elif "walmart" in raw_seller:
+                    mkp_tag = "walmart"
+                elif "amazon" in raw_seller:
+                    mkp_tag = "amazon_us"
+                elif "target" in raw_seller:
+                    mkp_tag = "target"
+                elif "apple" in raw_seller:
+                    mkp_tag = "apple_store"
+                elif "ebay" in raw_seller:
+                    mkp_tag = "ebay"
+                elif "verizon" in raw_seller:
+                    mkp_tag = "verizon"
+                elif "att" in raw_seller or "at&t" in raw_seller:
+                    mkp_tag = "att"
+                elif "tmobile" in raw_seller or "t-mobile" in raw_seller:
+                    mkp_tag = "tmobile"
+                else:
+                    import re
+                    mkp_tag = re.sub(r"[^a-z0-9_]", "", raw_seller.replace(" ", "_").replace(".", "_")) or "marketplace_store"
 
                 extracted_offers.append({
                     "marketplace": mkp_tag,
@@ -124,41 +186,4 @@ class DataForSEOFetcher:
 
         except Exception as e:
             logger.error(f"Failed to query DataForSEO API: {e}")
-            return self._mock_offers_fallback(keyword, region, category)
-
-    def _mock_offers_fallback(self, keyword: str, region: str, category: str) -> List[Dict[str, Any]]:
-        """Simulates 3+ retailer offers when credentials are pending."""
-        reg = region.upper()
-        curr = "AUD" if reg == "AU" else "USD"
-        
-        if reg == "AU":
-            stores = [("amazon_au", "Amazon Australia", 189.00), ("jbhifi", "JB Hi-Fi", 199.00), ("harveynorman", "Harvey Norman", 209.00)]
-        elif category == "Beauty & Skincare":
-            stores = [("sephora", "Sephora", 38.00), ("iherb", "iHerb", 35.50), ("amazon", "Amazon", 36.00)]
-        else:
-            stores = [("amazon", "Amazon US", 179.99), ("bestbuy", "Best Buy", 189.99), ("walmart", "Walmart", 185.00)]
-
-        offers = []
-        for idx, (mkp, seller, pr) in enumerate(stores, 1):
-            offers.append({
-                "marketplace": mkp,
-                "region": reg,
-                "external_id": f"dfs-{idx}",
-                "title": f"{keyword} (Official Release)",
-                "brand": keyword.split()[0] if keyword else "Brand",
-                "category": category,
-                "current_price": pr,
-                "original_price": round(pr * 1.15, 2),
-                "discount_percent": 13.0,
-                "currency": curr,
-                "rank_position": idx,
-                "rating": 4.7,
-                "review_count": 120,
-                "seller_name": seller,
-                "is_available": True,
-                "product_url": f"https://www.{mkp}.com/item/{keyword.lower().replace(' ', '-')}",
-                "image_url": "https://m.media-amazon.com/images/I/71H8XhwlwpL._AC_UL320_.jpg",
-                "images": [],
-                "metadata": {"provider": "dataforseo_demo", "search_keyword": keyword}
-            })
-        return offers
+            return []
